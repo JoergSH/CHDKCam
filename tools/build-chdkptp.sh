@@ -6,8 +6,10 @@ set -e
 DEST="${CHDKPTP_DIR:-$HOME/chdkptp}"
 SRC_ZIP=https://github.com/svn2github/chdkptp/archive/refs/heads/master.zip
 
-echo "Pakete installieren ..."
-sudo apt-get install -y build-essential liblua5.2-dev libusb-dev libreadline-dev curl unzip
+if [ -z "${SKIP_APT:-}" ]; then
+  echo "Pakete installieren ..."
+  sudo apt-get install -y build-essential liblua5.2-dev libusb-dev libreadline-dev curl unzip
+fi
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -19,7 +21,7 @@ cd "$DEST"
 cp config-sample-linux.mk config.mk
 sed -i 's/^DEBUG=1/#DEBUG=1/' config.mk
 # neuere gcc-Versionen nutzen C23; der alte Code braucht gnu17
-make CC="gcc -std=gnu17"
+make CC="gcc -std=gnu17" >/dev/null
 
 cat > chdkptp-run.sh <<EOF
 #!/bin/sh

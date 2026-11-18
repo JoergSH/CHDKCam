@@ -25,15 +25,35 @@ können sie abweichen.
 
 ## Installation
 
-```
-git clone https://github.com/JoergSH/CHDKCam.git
-cd CHDKCam
-./tools/build-chdkptp.sh        # chdkptp bauen (einmalig, ~/chdkptp)
-sudo ./install.sh               # App nach /opt/chdkcam, Dienste einrichten
-```
-Weboberfläche: `http://<rechner>:8081`
+Ein Befehl auf dem Linux-Rechner (Debian, Ubuntu, Mint, Raspberry Pi OS …), als normaler Benutzer:
 
-Update: `git pull && sudo ./install.sh`
+```
+curl -fsSL https://raw.githubusercontent.com/JoergSH/chdkcam/main/install.sh | bash
+```
+
+Der Installer installiert die nötigen Pakete, baut [chdkptp](https://app.assembla.com/spaces/chdkptp)
+nach `~/chdkptp`, kopiert das Programm nach `/opt/chdkcam` und richtet die Dienste ein.
+Danach im Browser `http://<IP-des-Rechners>:8081` öffnen.
+
+Mit Optionen:
+```
+curl -fsSL https://raw.githubusercontent.com/JoergSH/chdkcam/main/install.sh | bash -s -- --port 8082 --data /mnt/usb/chdkcam
+```
+
+| Option | Bedeutung | Standard |
+|---|---|---|
+| `--port N` | Port der Weboberfläche | 8081 |
+| `--data DIR` | Datenordner für Bilder, Videos, Einstellungen | `~/chdkcam` |
+| `--user NAME` | Benutzer, unter dem CHDKCam läuft | aufrufender Benutzer |
+| `--rebuild-chdkptp` | chdkptp neu bauen | nur wenn es fehlt |
+| `--no-chdkptp` | chdkptp nicht bauen | – |
+| `--no-start` | nur installieren, nicht starten | – |
+
+Alternativ aus dem geklonten Repo: `git clone https://github.com/JoergSH/chdkcam.git && cd chdkcam && bash install.sh`
+
+**Update:** den Installer einfach erneut ausführen. Einstellungen und Bilder bleiben erhalten.
+
+**Entfernen:** `sudo bash /opt/chdkcam/uninstall.sh` (mit `--purge` wird auch der Datenordner gelöscht).
 
 ## Kamera vorbereiten
 
@@ -49,7 +69,7 @@ Update: `git pull && sudo ./install.sh`
    echo -n BOOTDISK | sudo dd of=/dev/sdX1 bs=1 seek=64 count=8 conv=notrunc
    ```
    Danach den Inhalt der ZIP-Datei auf die Karte entpacken, Schreibschutz auf **LOCK**, einlegen.
-4. Falls nur der kleine Build drauf ist: `./tools/upload-lualib.sh sx20-102d`
+4. Falls nur der kleine Build drauf ist: `/opt/chdkcam/tools/upload-lualib.sh sx20-102d`
 5. An der Kamera: *Autom. Abschaltung: Aus*, Modus **P**, ggf. manuellen Weißabgleich messen.
 6. Dauerbetrieb nur mit Netzteil (SX20: DC IN 7,4 V, 2 A).
 
