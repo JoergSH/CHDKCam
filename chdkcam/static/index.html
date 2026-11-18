@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHDKCam</title>
+<style>
+:root{--bg:#14171a;--card:#1e2227;--line:#2e343b;--text:#e6e8ea;--dim:#9aa3ab;--acc:#5fbf6a;--warn:#e0a03a;--err:#e05a4f}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--text)}
+header{display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:18px;margin:0}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{background:none;border:1px solid transparent;color:var(--dim);padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit}
+nav button.on{color:var(--text);border-color:var(--line);background:var(--card)}
+main{padding:16px;max-width:1400px;margin:auto}
+section{display:none}section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.latest img{width:100%;border-radius:6px;display:block;background:#000;aspect-ratio:4/3;object-fit:contain}
+.latest h3{margin:0 0 8px;font-size:16px;display:flex;justify-content:space-between}
+.dim{color:var(--dim);font-size:13px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0}
+label{display:flex;gap:6px;align-items:center}
+input,select{background:#0f1113;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
+input[type=number]{width:90px}input[type=range]{width:240px;padding:0}
+button.b{background:#2b3138;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 14px;cursor:pointer;font:inherit}
+button.b:hover{border-color:var(--dim)}button.p{background:var(--acc);color:#0b130c;border-color:var(--acc);font-weight:600}
+button.b:disabled{opacity:.5;cursor:wait}
+.ok{color:var(--acc)}.warn{color:var(--warn)}.err{color:var(--err)}
+.thumbs{display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.thumbs a{position:relative;display:block}
+.thumbs img{width:100%;border-radius:4px;display:block;aspect-ratio:4/3;object-fit:cover;background:#000}
+.thumbs span{position:absolute;left:4px;bottom:4px;background:#000a;font-size:12px;padding:1px 5px;border-radius:3px}
+.pos{border-left:3px solid var(--acc)}
+.pos.off{border-left-color:var(--line);opacity:.75}
+.prev img{max-width:100%;border-radius:6px;margin-top:8px}
+table{border-collapse:collapse;width:100%}td,th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
+pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300px;overflow:auto}
+#lb{position:fixed;inset:0;background:#000e;display:none;align-items:center;justify-content:center;z-index:9;flex-direction:column}
+#lb img{max-width:96vw;max-height:88vh}#lb .row{color:#ddd}
+.bar{height:8px;background:#0f1113;border-radius:4px;overflow:hidden;margin-top:6px}.bar div{height:100%;background:var(--acc);width:0}
+</style>
+</head>
+<body>
+<header>
+  <h1>📷 CHDKCam</h1>
+  <nav id="nav">
+    <button data-t="home" class="on">Übersicht</button>
+    <button data-t="pos">Positionen</button>
+    <button data-t="gal">Galerie</button>
+    <button data-t="vid">Video</button>
+    <button data-t="set">Einstellungen</button>
+  </nav>
+  <span id="hdr" class="dim"></span>
+</header>
+<main>
+
+<section id="home" class="on">
+  <div class="card row" id="sum"></div>
+  <div class="grid" id="latest"></div>
+</section>
+
+<section id="pos">
+  <div class="card">
+    <div class="row">
+      <button class="b" id="camchk">Kamera prüfen</button>
+      <span id="camst" class="dim"></span>
+    </div>
+    <div class="dim">Zoom 0 = Weitwinkel (28 mm), 128 = Tele (560 mm). Fokus 0 = Autofokus, sonst Abstand in mm.
+      Belichtungszeit leer = Automatik (z. B. 1/30 oder 0.5). ISO 0 = Automatik.
+      „Sucherbild“ ist schnell und grob, „Probebild“ löst richtig aus (landet nicht in der Zeitreihe).</div>
+  </div>
+  <div id="poslist"></div>
+  <div class="row">
+    <button class="b" id="addpos">+ Position</button>
+    <button class="b p" id="savepos">Speichern</button>
+    <span id="posmsg" class="dim"></span>
+  </div>
+</section>
+
+<section id="gal">
+  <div class="card row">
+    <label>Position <select id="gpos"></select></label>
+    <label>Tag <select id="gday"></select></label>
+    <span id="gcount" class="dim"></span>
+  </div>
+  <div class="thumbs" id="gthumbs"></div>
+</section>
+
+<section id="vid">
+  <div class="card">
+    <div class="row">
+      <label>Position <select id="vpos"></select></label>
+      <label>von <input type="date" id="vfrom"></label>
+      <label>bis <input type="date" id="vto"></label>
+      <label>FPS <input type="number" id="vfps" value="24" min="1" max="60"></label>
+      <label>Breite <select id="vw"><option>1280</option><option selected>1920</option><option>2560</option><option>3840</option></select></label>
+      <button class="b p" id="vgo">Video erstellen</button>
+    </div>
+    <div id="vjob" class="dim"></div>
+    <div class="bar"><div id="vbar"></div></div>
+  </div>
+  <div class="card"><table id="vlist"></table></div>
+</section>
+
+<section id="set">
+  <div class="card">
+    <div class="row"><label>Intervall (Minuten) <input type="number" id="s_int" min="1" max="1440"></label></div>
+    <div class="row"><label>Fotografieren von <input type="number" id="s_ls" min="0" max="23"> Uhr</label>
+      <label>bis <input type="number" id="s_le" min="1" max="24"> Uhr</label></div>
+    <div class="row"><label>Wartezeit nach Zoom (ms) <input type="number" id="s_settle" min="0" max="20000"></label>
+      <label>Pause nach Auslösen (ms) <input type="number" id="s_pause" min="0" max="30000"></label></div>
+    <div class="row"><label>Nach der Runde
+      <select id="s_after"><option value="stay">Zoom stehen lassen</option><option value="home">auf Weitwinkel fahren</option><option value="play">Objektiv einfahren</option></select></label></div>
+    <div class="row"><label>Wiederholungen bei Fehler <input type="number" id="s_retry" min="0" max="3"></label></div>
+    <div class="row"><label>chdkptp <input id="s_ptp" style="width:320px"></label></div>
+    <div class="row"><button class="b p" id="saveset">Speichern</button><span id="setmsg" class="dim"></span></div>
+  </div>
+  <div class="card"><h3>Fehler</h3><pre id="lerr"></pre></div>
+  <div class="card"><h3>Aufnahmen</h3><pre id="lcap"></pre></div>
+</section>
+</main>
+
+<div id="lb"><img id="lbimg"><div class="row"><button class="b" id="lbprev">◀</button><span id="lbtxt"></span><button class="b" id="lbnext">▶</button><a class="b" id="lbfull" target="_blank" style="text-decoration:none">Original</a><button class="b" id="lbclose">✕</button></div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const api=(u,b)=>fetch(u,b===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtT=s=>s?s.replace('T',' ').slice(0,16):'–';
+let CFG=null,STATUS=null;
+
+// ---------- Navigation
+document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('main section').forEach(s=>s.classList.toggle('on',s.id===b.dataset.t));
+  if(b.dataset.t==='gal')loadGalPos(); if(b.dataset.t==='vid')loadVideos(); if(b.dataset.t==='set')loadSet();
+  if(b.dataset.t==='pos')renderPositions();
+});
+
+// ---------- Übersicht
+async function loadStatus(){
+  STATUS=await api('/api/status');
+  const s=STATUS,l=s.last;
+  $('hdr').textContent=(s.light_on?'Licht an':'Licht aus')+' · nächste Aufnahme '+fmtT(s.next);
+  let st='–';
+  if(l){st=l.ok?'<span class="ok">OK</span>':'<span class="err">Fehler: '+esc(l.error||l.missing?.join(','))+'</span>';}
+  $('sum').innerHTML=`<span>Letzte Runde: <b>${fmtT(l?.time)}</b> ${st}</span>
+    ${l?.vbatt_mv?`<span class="dim">Kamera ${(l.vbatt_mv/1000).toFixed(2)} V</span>`:''}
+    <span class="dim">alle ${s.interval_min} min, ${s.light_start}–${s.light_end} Uhr</span>
+    <span class="dim">frei: ${s.disk_free_gb} GB</span>
+    <button class="b p" id="capall">Jetzt aufnehmen</button><span id="capmsg" class="dim"></span>`;
+  $('capall').onclick=()=>capture(null,$('capmsg'));
+  const j=s.job;
+  if(j.state==='running'&&j.kind==='capture')$('capmsg').textContent='Aufnahme läuft …';
+  $('latest').innerHTML=s.positions.map(p=>`<div class="card latest">
+    <h3><span>${esc(p.name)}${p.enabled?'':' <span class="dim">(aus)</span>'}</span><span class="dim">Zoom ${p.zoom}</span></h3>
+    ${p.latest?`<a href="/latest/${p.id}.jpg" target="_blank"><img src="/latest/${p.id}.jpg?t=${Date.parse(p.latest)}"></a>`:'<div class="dim">noch kein Bild</div>'}
+    <div class="row dim"><span>${fmtT(p.latest)}</span><span>${p.images} Bilder / ${p.days} Tage</span>
+    <button class="b" data-cap="${p.id}">Nur diese</button></div></div>`).join('');
+  document.querySelectorAll('[data-cap]').forEach(b=>b.onclick=()=>capture(b.dataset.cap,$('capmsg')));
+}
+async function capture(pos,msg){
+  const r=await api('/api/capture',{pos});
+  msg.textContent=r.ok?'Aufnahme läuft …':('✗ '+r.error);
+  if(!r.ok)return;
+  for(let i=0;i<120;i++){await new Promise(r=>setTimeout(r,2000));
+    const s=await api('/api/status');if(s.job.state!=='running'){
+      const res=s.job.result;msg.textContent=s.job.state==='done'&&res?.ok?'✓ fertig':('✗ '+(s.job.error||res?.error||''));break;}}
+  loadStatus();
+}
+
+// ---------- Positionen
+async function loadCfg(){CFG=await api('/api/config');}
+function renderPositions(){
+  if(!CFG)return;
+  $('poslist').innerHTML=CFG.positions.map((p,i)=>`<div class="card pos ${p.enabled?'':'off'}" data-i="${i}">
+    <div class="row"><label>Name <input data-k="name" value="${esc(p.name)}"></label>
+      <label>ID <input data-k="id" value="${esc(p.id)}" style="width:110px"></label>
+      <label><input type="checkbox" data-k="enabled" ${p.enabled?'checked':''}> aktiv</label>
+      <button class="b" data-del>Löschen</button></div>
+    <div class="row"><label>Zoom <input type="range" min="0" max="128" data-k="zoom" value="${p.zoom}">
+      <input type="number" min="0" max="128" data-k="zoomn" value="${p.zoom}"></label></div>
+    <div class="row"><label>Fokus mm <input type="number" data-k="focus_mm" value="${p.focus_mm}" min="0"></label>
+      <label>Belichtung s <input data-k="tv" value="${esc(p.tv)}" placeholder="auto" style="width:80px"></label>
+      <label>ISO <input type="number" data-k="iso" value="${p.iso}" min="0" max="3200"></label>
+      <label>Blitz <select data-k="flash">${[['camera','wie Kamera'],['off','aus'],['auto','automatisch'],['on','immer']].map(([v,t])=>`<option value="${v}" ${p.flash===v?'selected':''}>${t}</option>`).join('')}</select></label>
+      <label>Weißabgleich <select data-k="wb">${[['camera','wie Kamera'],['auto','automatisch'],['day','Tageslicht'],['cloudy','bewölkt'],['tungsten','Kunstlicht'],['fluor','Leuchtstoff'],['fluor_h','Leuchtstoff H'],['custom','manuell (an der Kamera gemessen)']].map(([v,t])=>`<option value="${v}" ${p.wb===v?'selected':''}>${t}</option>`).join('')}</select></label></div>
+    <div class="row"><button class="b" data-live>Sucherbild</button><button class="b" data-prev>Probebild</button><span class="dim" data-msg></span></div>
+    <div class="prev" data-img></div></div>`).join('');
+  document.querySelectorAll('#poslist .pos').forEach(card=>{
+    const i=+card.dataset.i, q=k=>card.querySelector(`[data-k="${k}"]`);
+    q('zoom').oninput=()=>q('zoomn').value=q('zoom').value;
+    q('zoomn').oninput=()=>q('zoom').value=q('zoomn').value;
+    card.querySelector('[data-del]').onclick=()=>{readPositions();CFG.positions.splice(i,1);renderPositions();};
+    const msg=card.querySelector('[data-msg]'),img=card.querySelector('[data-img]');
+    const busy=(on)=>card.querySelectorAll('button').forEach(b=>b.disabled=on);
+    card.querySelector('[data-live]').onclick=async()=>{busy(true);msg.textContent='Sucherbild …';
+      const r=await api('/api/live',{zoom:+q('zoomn').value});busy(false);
+      msg.textContent=r.ok?'':'✗ '+r.error;if(r.ok)img.innerHTML=`<img src="${r.url}?t=${r.t}">`;};
+    card.querySelector('[data-prev]').onclick=async()=>{busy(true);msg.textContent='Probebild … (ca. 10–20 s)';
+      readPositions();const r=await api('/api/preview',{position:CFG.positions[i]});busy(false);
+      msg.textContent=r.ok?'':'✗ '+r.error;if(r.ok)img.innerHTML=`<a href="${r.full}?t=${r.t}" target="_blank"><img src="${r.url}?t=${r.t}"></a>`;};
+  });
+}
+function readPositions(){
+  document.querySelectorAll('#poslist .pos').forEach(card=>{
+    const p=CFG.positions[+card.dataset.i],q=k=>card.querySelector(`[data-k="${k}"]`);
+    p.name=q('name').value;p.id=q('id').value;p.enabled=q('enabled').checked;p.zoom=+q('zoomn').value;
+    p.focus_mm=+q('focus_mm').value||0;p.tv=q('tv').value.trim();p.iso=+q('iso').value||0;p.flash=q('flash').value;p.wb=q('wb').value;});
+}
+$('addpos').onclick=()=>{readPositions();const n=CFG.positions.length+1;
+  CFG.positions.push({id:'pos'+n,name:'Position '+n,zoom:30,focus_mm:0,tv:'',iso:0,flash:'camera',wb:'camera',enabled:true});renderPositions();};
+$('savepos').onclick=async()=>{readPositions();CFG=await api('/api/config',{positions:CFG.positions});
+  renderPositions();$('posmsg').textContent='✓ gespeichert';setTimeout(()=>$('posmsg').textContent='',3000);loadStatus();};
+$('camchk').onclick=async()=>{$('camst').textContent='frage Kamera …';const r=await api('/api/camera');
+  $('camst').innerHTML=r.connected?`<span class="ok">verbunden</span> · ${esc(r.platform)} · CHDK ${esc(r.chdk)} · Zoom ${r.zoom}/${r.zoom_steps-1} · ${(r.vbatt_mv/1000).toFixed(2)} V · ${r.rec?'Aufnahmemodus':'Wiedergabe'}`
+    :`<span class="err">nicht verbunden</span> ${esc(r.error)}`;};
+
+// ---------- Galerie
+let GAL=[],GPOS='',GDAY='';
+function posOptions(sel){sel.innerHTML=(CFG?.positions||[]).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');}
+async function loadGalPos(){posOptions($('gpos'));await loadDays();}
+async function loadDays(){GPOS=$('gpos').value;const d=await api('/api/days?pos='+GPOS);
+  $('gday').innerHTML=d.map(x=>`<option value="${x.day}">${x.day} (${x.count})</option>`).join('');loadThumbs();}
+async function loadThumbs(){GDAY=$('gday').value;if(!GDAY){$('gthumbs').innerHTML='<div class="dim">keine Bilder</div>';$('gcount').textContent='';return;}
+  GAL=await api(`/api/images?pos=${GPOS}&day=${GDAY}`);$('gcount').textContent=GAL.length+' Bilder';
+  $('gthumbs').innerHTML=GAL.map((f,i)=>`<a href="#" data-i="${i}"><img loading="lazy" src="/thumb/${GPOS}/${GDAY}/${f}"><span>${f.slice(9,11)}:${f.slice(11,13)}</span></a>`).join('');
+  document.querySelectorAll('#gthumbs a').forEach(a=>a.onclick=e=>{e.preventDefault();lb(+a.dataset.i);});}
+$('gpos').onchange=loadDays;$('gday').onchange=loadThumbs;
+let LBI=0;
+function lb(i){LBI=(i+GAL.length)%GAL.length;const f=GAL[LBI],u=`/img/${GPOS}/${GDAY}/${f}`;
+  $('lbimg').src=u;$('lbfull').href=u;$('lbtxt').textContent=`${GDAY} ${f.slice(9,11)}:${f.slice(11,13)} (${LBI+1}/${GAL.length})`;$('lb').style.display='flex';}
+$('lbclose').onclick=()=>$('lb').style.display='none';$('lbprev').onclick=()=>lb(LBI-1);$('lbnext').onclick=()=>lb(LBI+1);
+document.addEventListener('keydown',e=>{if($('lb').style.display!=='flex')return;
+  if(e.key==='Escape')$('lbclose').onclick();if(e.key==='ArrowLeft')lb(LBI-1);if(e.key==='ArrowRight')lb(LBI+1);});
+
+// ---------- Video
+async function loadVideos(){posOptions($('vpos'));const v=await api('/api/videos');
+  $('vlist').innerHTML=v.length?'<tr><th>Datei</th><th>Größe</th><th>erstellt</th><th></th></tr>'+v.map(x=>`<tr><td><a href="/video/${x.name}" target="_blank">${esc(x.name)}</a></td><td>${x.mb} MB</td><td>${fmtT(x.time)}</td>
+    <td><a class="b" href="/video/${x.name}" download style="text-decoration:none">Laden</a> <button class="b" data-vdel="${esc(x.name)}">Löschen</button></td></tr>`).join(''):'<tr><td class="dim">noch keine Videos</td></tr>';
+  document.querySelectorAll('[data-vdel]').forEach(b=>b.onclick=async()=>{if(!confirm('Video löschen?'))return;await api('/api/video/delete',{name:b.dataset.vdel});loadVideos();});
+  pollJob();}
+$('vgo').onclick=async()=>{const r=await api('/api/render',{pos:$('vpos').value,from:$('vfrom').value,to:$('vto').value,fps:+$('vfps').value,width:+$('vw').value});
+  if(!r.ok)$('vjob').textContent='✗ '+r.error;else{pollJob.reloaded=false;pollJob();}};
+async function pollJob(){const s=await api('/api/status'),j=s.job;
+  if(j.kind!=='render'){$('vjob').textContent='';$('vbar').style.width='0';return;}
+  if(j.state==='running'){$('vjob').textContent=`Erstelle ${j.name||''}: ${j.frame||0}/${j.total||'?'} Bilder`;
+    $('vbar').style.width=(j.total?100*j.frame/j.total:0)+'%';setTimeout(pollJob,2000);}
+  else if(j.state==='done'){$('vjob').innerHTML='<span class="ok">✓ fertig:</span> '+esc(j.name);$('vbar').style.width='100%';
+    if(!pollJob.reloaded){pollJob.reloaded=true;loadVideos();}}
+  else if(j.state==='error'){$('vjob').innerHTML='<span class="err">✗ '+esc(j.error)+'</span>';}}
+
+// ---------- Einstellungen
+async function loadSet(){await loadCfg();const c=CFG;$('s_int').value=c.interval_min;$('s_ls').value=c.light_start;$('s_le').value=c.light_end;
+  $('s_settle').value=c.settle_ms;$('s_pause').value=c.shot_pause_ms;$('s_after').value=c.after;$('s_retry').value=c.retries;$('s_ptp').value=c.chdkptp;
+  const l=await api('/api/log');$('lerr').textContent=l.error.join('')||'–';$('lcap').textContent=l.capture.slice().reverse().join('')||'–';}
+$('saveset').onclick=async()=>{CFG=await api('/api/config',{interval_min:+$('s_int').value,light_start:+$('s_ls').value,light_end:+$('s_le').value,
+  settle_ms:+$('s_settle').value,shot_pause_ms:+$('s_pause').value,after:$('s_after').value,retries:+$('s_retry').value,chdkptp:$('s_ptp').value});
+  $('setmsg').textContent='✓ gespeichert';setTimeout(()=>$('setmsg').textContent='',3000);loadStatus();};
+
+(async()=>{await loadCfg();await loadStatus();setInterval(()=>{if($('home').classList.contains('on'))loadStatus();},30000);})();
+</script>
+</body>
+</html>

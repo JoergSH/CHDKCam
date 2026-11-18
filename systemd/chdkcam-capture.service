@@ -1,0 +1,11 @@
+[Unit]
+Description=CHDKCam Zeitraffer-Aufnahme (prueft Zeitplan)
+
+[Service]
+Type=oneshot
+User=@USER@
+SupplementaryGroups=plugdev
+EnvironmentFile=@ENVFILE@
+ExecStart=/usr/bin/python3 @APPDIR@/core.py capture --scheduled
+TimeoutStartSec=10min
+Nice=5

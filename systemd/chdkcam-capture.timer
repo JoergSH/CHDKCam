@@ -1,0 +1,9 @@
+[Unit]
+Description=CHDKCam: jede Minute pruefen, ob eine Aufnahme faellig ist
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
