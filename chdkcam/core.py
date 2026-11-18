@@ -42,6 +42,7 @@ WB_MODES = {"auto": 0, "day": 1, "cloudy": 2, "tungsten": 3, "fluor": 4, "fluor_
 ID_RE = re.compile(r"^[a-z0-9_-]{1,24}$")
 
 DEFAULT_CFG = {
+    "title": "CHDKCam",    # Name in der Weboberflaeche / im Browser-Tab
     "interval_min": 10,
     "light_start": 4,      # Stunde, ab der fotografiert wird
     "light_end": 24,       # Stunde, bis zu der fotografiert wird (24 = Mitternacht)
@@ -140,6 +141,7 @@ def validate_position(p, idx):
 
 def validate_cfg(new):
     c = dict(DEFAULT_CFG)
+    c["title"] = (str(new.get("title") or "").strip() or "CHDKCam")[:40]
     c["interval_min"] = _clamp(new.get("interval_min", c["interval_min"]), 1, 1440)
     c["light_start"] = _clamp(new.get("light_start", c["light_start"]), 0, 23)
     c["light_end"] = _clamp(new.get("light_end", c["light_end"]), 1, 24)

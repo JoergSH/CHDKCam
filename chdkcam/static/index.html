@@ -44,7 +44,7 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
 </head>
 <body>
 <header>
-  <h1>📷 CHDKCam</h1>
+  <h1>📷 <span id="title">CHDKCam</span></h1>
   <nav id="nav">
     <button data-t="home" class="on">Übersicht</button>
     <button data-t="pos">Positionen</button>
@@ -106,6 +106,7 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
 
 <section id="set">
   <div class="card">
+    <div class="row"><label>Name der Kamera <input id="s_title" maxlength="40" style="width:240px"></label></div>
     <div class="row"><label>Intervall (Minuten) <input type="number" id="s_int" min="1" max="1440"></label></div>
     <div class="row"><label>Fotografieren von <input type="number" id="s_ls" min="0" max="23"> Uhr</label>
       <label>bis <input type="number" id="s_le" min="1" max="24"> Uhr</label></div>
@@ -172,7 +173,8 @@ async function capture(pos,msg){
 }
 
 // ---------- Positionen
-async function loadCfg(){CFG=await api('/api/config');}
+function showTitle(){$('title').textContent=CFG.title;document.title=CFG.title;}
+async function loadCfg(){CFG=await api('/api/config');showTitle();}
 function renderPositions(){
   if(!CFG)return;
   $('poslist').innerHTML=CFG.positions.map((p,i)=>`<div class="card pos ${p.enabled?'':'off'}" data-i="${i}">
@@ -253,12 +255,12 @@ async function pollJob(){const s=await api('/api/status'),j=s.job;
   else if(j.state==='error'){$('vjob').innerHTML='<span class="err">✗ '+esc(j.error)+'</span>';}}
 
 // ---------- Einstellungen
-async function loadSet(){await loadCfg();const c=CFG;$('s_int').value=c.interval_min;$('s_ls').value=c.light_start;$('s_le').value=c.light_end;
+async function loadSet(){await loadCfg();const c=CFG;$('s_title').value=c.title;$('s_int').value=c.interval_min;$('s_ls').value=c.light_start;$('s_le').value=c.light_end;
   $('s_settle').value=c.settle_ms;$('s_pause').value=c.shot_pause_ms;$('s_after').value=c.after;$('s_retry').value=c.retries;$('s_ptp').value=c.chdkptp;
   const l=await api('/api/log');$('lerr').textContent=l.error.join('')||'–';$('lcap').textContent=l.capture.slice().reverse().join('')||'–';}
-$('saveset').onclick=async()=>{CFG=await api('/api/config',{interval_min:+$('s_int').value,light_start:+$('s_ls').value,light_end:+$('s_le').value,
+$('saveset').onclick=async()=>{CFG=await api('/api/config',{title:$('s_title').value,interval_min:+$('s_int').value,light_start:+$('s_ls').value,light_end:+$('s_le').value,
   settle_ms:+$('s_settle').value,shot_pause_ms:+$('s_pause').value,after:$('s_after').value,retries:+$('s_retry').value,chdkptp:$('s_ptp').value});
-  $('setmsg').textContent='✓ gespeichert';setTimeout(()=>$('setmsg').textContent='',3000);loadStatus();};
+  showTitle();$('setmsg').textContent='✓ gespeichert';setTimeout(()=>$('setmsg').textContent='',3000);loadStatus();};
 
 (async()=>{await loadCfg();await loadStatus();setInterval(()=>{if($('home').classList.contains('on'))loadStatus();},30000);})();
 </script>
