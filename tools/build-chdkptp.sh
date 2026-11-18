@@ -21,7 +21,7 @@ cd "$DEST"
 cp config-sample-linux.mk config.mk
 sed -i 's/^DEBUG=1/#DEBUG=1/' config.mk
 # neuere gcc-Versionen nutzen C23; der alte Code braucht gnu17
-make CC="gcc -std=gnu17" >/dev/null
+make CC="gcc -std=gnu17" >"$TMP/build.log" 2>&1 || { tail -30 "$TMP/build.log"; echo "Bau fehlgeschlagen"; exit 1; }
 
 cat > chdkptp-run.sh <<EOF
 #!/bin/sh
