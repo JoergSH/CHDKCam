@@ -41,6 +41,9 @@ FLASH_MODES = {"auto": 0, "on": 1, "off": 2}   # propcase FLASH_MODE
 # propcase WB_MODE (an der SX20 ermittelt)
 WB_MODES = {"auto": 0, "day": 1, "cloudy": 2, "tungsten": 3, "fluor": 4, "fluor_h": 5,
             "custom": 7}
+# propcase RESOLUTION / QUALITY (an der SX20 ermittelt)
+SIZES = {"L": 0, "M1": 1, "M2": 2, "M3": 3}          # 4000x3000, 3264x2448, 2592x1944, 1600x1200
+QUALITIES = {"superfine": 0, "fine": 1, "normal": 2}
 ID_RE = re.compile(r"^[a-z0-9_-]{1,24}$")
 
 DEFAULT_CFG = {
@@ -141,7 +144,10 @@ def validate_position(p, idx):
         "iso": _clamp(p.get("iso", 0), 0, 3200),
         "flash": fl,
         "wb": wb,
+        "size": p.get("size") if p.get("size") in SIZES else "camera",
+        "quality": p.get("quality") if p.get("quality") in QUALITIES else "camera",
         "dng": bool(p.get("dng", False)),
+        "interval_min": _clamp(p.get("interval_min", 0), 0, 1440),
         "enabled": bool(p.get("enabled", True)),
     }
 
@@ -199,12 +205,22 @@ def light_on(c, now=None):
     return h >= s or h < e      # ueber Mitternacht
 
 
-def due(c, now=None):
+def pos_interval(c, p):
+    return p.get("interval_min") or c["interval_min"]
+
+
+def due_positions(c, now=None):
+    """IDs der aktiven Positionen, die zu diesem Zeitpunkt dran sind (eigenes oder Standard-Intervall)."""
     now = now or datetime.datetime.now()
     if not light_on(c, now):
-        return False
-    minutes = now.hour * 60 + now.minute - c["light_start"] * 60
-    return minutes % c["interval_min"] == 0
+        return []
+    minutes = (now.hour * 60 + now.minute - c["light_start"] * 60) % 1440
+    return [p["id"] for p in c["positions"]
+            if p["enabled"] and minutes % pos_interval(c, p) == 0]
+
+
+def due(c, now=None):
+    return bool(due_positions(c, now))
 
 
 # ------------------------------------------------------------ Sperre
@@ -426,6 +442,10 @@ def shoot_positions(c, positions, dest_fn, timeout=None):
             props.append("set_prop(pc.FLASH_MODE,%d)" % FLASH_MODES[p["flash"]])
         if p.get("wb") in WB_MODES:
             props.append("set_prop(pc.WB_MODE,%d)" % WB_MODES[p["wb"]])
+        if p.get("size") in SIZES:
+            props.append("set_prop(pc.RESOLUTION,%d)" % SIZES[p["size"]])
+        if p.get("quality") in QUALITIES:
+            props.append("set_prop(pc.QUALITY,%d)" % QUALITIES[p["quality"]])
         if props:
             cmds.append("luar local pc=require'propcase' %s sleep(500) return 1" % " ".join(props))
         cmds.append("rs %s -nosubst%s" % (base, rs_args(p)))
@@ -443,11 +463,14 @@ def shoot_positions(c, positions, dest_fn, timeout=None):
     return res, out
 
 
-def capture(c=None, only=None, lock_timeout=120):
-    """Eine Aufnahme-Runde. Gibt Ergebnis-Dict zurueck."""
+def capture(c=None, only=None, lock_timeout=120, ids=None):
+    """Eine Aufnahme-Runde. Gibt Ergebnis-Dict zurueck.
+    only: genau diese Position (auch wenn inaktiv); ids: Liste aktiver Positionen."""
     c = c or load_cfg()
     ensure_dirs()
     positions = [p for p in c["positions"] if p["enabled"]]
+    if ids is not None:
+        positions = [p for p in positions if p["id"] in ids]
     if only:
         positions = [p for p in c["positions"] if p["id"] == only]
     if not positions:
@@ -649,10 +672,13 @@ def main(argv):
     only = None
     if "--pos" in argv:
         only = argv[argv.index("--pos") + 1]
-    if "--scheduled" in argv and not due(c):
-        return 0
+    ids = None
+    if "--scheduled" in argv:
+        ids = due_positions(c)
+        if not ids:
+            return 0
     try:
-        r = capture(c, only=only)
+        r = capture(c, only=only, ids=ids)
     except Exception as e:  # noqa: BLE001
         log_error("Aufnahme: %s" % e)
         print("Fehler:", e)

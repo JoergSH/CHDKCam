@@ -190,7 +190,7 @@ async function loadStatus(){
   const j=s.job;
   if(j.state==='running'&&j.kind==='capture')$('capmsg').textContent='Aufnahme läuft …';
   $('latest').innerHTML=s.positions.map(p=>`<div class="card latest">
-    <h3><span>${esc(p.name)}${p.enabled?'':' <span class="dim">(aus)</span>'}</span><span class="dim">Zoom ${p.zoom}</span></h3>
+    <h3><span>${esc(p.name)}${p.enabled?'':' <span class="dim">(aus)</span>'}</span><span class="dim">Zoom ${p.zoom} · alle ${p.interval_min||s.interval_min} min</span></h3>
     ${p.latest?`<a href="/latest/${p.id}.jpg" target="_blank"><img src="/latest/${p.id}.jpg?t=${Date.parse(p.latest)}"></a>`:'<div class="dim">noch kein Bild</div>'}
     <div class="row dim"><span>${fmtT(p.latest)}</span><span>${p.images} Bilder / ${p.days} Tage</span>
     <button class="b" data-cap="${p.id}">Nur diese</button></div></div>`).join('');
@@ -216,6 +216,8 @@ function renderPositions(){
       <label>ID <input data-k="id" value="${esc(p.id)}" style="width:110px"></label>
       <label><input type="checkbox" data-k="enabled" ${p.enabled?'checked':''}> aktiv</label>
       <button class="b" data-del>Löschen</button></div>
+    <div class="row"><label>Intervall min <input type="number" data-k="interval_min" value="${p.interval_min||0}" min="0" max="1440" title="0 = Standard aus den Einstellungen"></label>
+      <span class="dim">0 = Standard (${CFG.interval_min} min)</span></div>
     <div class="row"><label>Zoom <input type="range" min="0" max="128" data-k="zoom" value="${p.zoom}">
       <input type="number" min="0" max="128" data-k="zoomn" value="${p.zoom}"></label></div>
     <div class="row"><label>Fokus mm <input type="number" data-k="focus_mm" value="${p.focus_mm}" min="0"></label>
@@ -223,6 +225,8 @@ function renderPositions(){
       <label>ISO <input type="number" data-k="iso" value="${p.iso}" min="0" max="3200"></label>
       <label>Blitz <select data-k="flash">${[['camera','wie Kamera'],['off','aus'],['auto','automatisch'],['on','immer']].map(([v,t])=>`<option value="${v}" ${p.flash===v?'selected':''}>${t}</option>`).join('')}</select></label>
       <label>Weißabgleich <select data-k="wb">${[['camera','wie Kamera'],['auto','automatisch'],['day','Tageslicht'],['cloudy','bewölkt'],['tungsten','Kunstlicht'],['fluor','Leuchtstoff'],['fluor_h','Leuchtstoff H'],['custom','manuell (an der Kamera gemessen)']].map(([v,t])=>`<option value="${v}" ${p.wb===v?'selected':''}>${t}</option>`).join('')}</select></label></div>
+    <div class="row"><label>Bildgröße <select data-k="size">${[['camera','wie Kamera'],['L','L 4000×3000 (12 MP)'],['M1','M1 3264×2448 (8 MP)'],['M2','M2 2592×1944 (5 MP)'],['M3','M3 1600×1200 (2 MP)']].map(([v,t])=>`<option value="${v}" ${p.size===v?'selected':''}>${t}</option>`).join('')}</select></label>
+      <label>Qualität <select data-k="quality">${[['camera','wie Kamera'],['superfine','superfein'],['fine','fein'],['normal','normal']].map(([v,t])=>`<option value="${v}" ${p.quality===v?'selected':''}>${t}</option>`).join('')}</select></label></div>
     <div class="row"><button class="b" data-live>Sucherbild</button><button class="b" data-prev>Probebild</button><span class="dim" data-msg></span></div>
     <div class="prev" data-img></div></div>`).join('');
   document.querySelectorAll('#poslist .pos').forEach(card=>{
@@ -255,10 +259,10 @@ function readPositions(){
   document.querySelectorAll('#poslist .pos').forEach(card=>{
     const p=CFG.positions[+card.dataset.i],q=k=>card.querySelector(`[data-k="${k}"]`);
     p.name=q('name').value;p.id=q('id').value;p.enabled=q('enabled').checked;p.zoom=+q('zoomn').value;
-    p.focus_mm=+q('focus_mm').value||0;p.tv=q('tv').value.trim();p.iso=+q('iso').value||0;p.flash=q('flash').value;p.wb=q('wb').value;});
+    p.focus_mm=+q('focus_mm').value||0;p.tv=q('tv').value.trim();p.iso=+q('iso').value||0;p.flash=q('flash').value;p.wb=q('wb').value;p.interval_min=+q('interval_min').value||0;p.size=q('size').value;p.quality=q('quality').value;});
 }
 $('addpos').onclick=()=>{readPositions();const n=CFG.positions.length+1;
-  CFG.positions.push({id:'pos'+n,name:'Position '+n,zoom:30,focus_mm:0,tv:'',iso:0,flash:'camera',wb:'camera',enabled:true});renderPositions();};
+  CFG.positions.push({id:'pos'+n,name:'Position '+n,zoom:30,focus_mm:0,tv:'',iso:0,flash:'camera',wb:'camera',size:'camera',quality:'camera',interval_min:0,enabled:true});renderPositions();};
 $('savepos').onclick=async()=>{readPositions();CFG=await api('/api/config',{positions:CFG.positions});
   renderPositions();$('posmsg').textContent='✓ gespeichert';setTimeout(()=>$('posmsg').textContent='',3000);loadStatus();};
 $('camchk').onclick=async()=>{$('camst').textContent='frage Kamera …';const r=await api('/api/camera');
