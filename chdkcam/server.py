@@ -291,9 +291,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": ok, "error": None if ok else "laeuft bereits"})
         if u.path == "/api/preview":
             try:
-                core.preview(body.get("position") or {})
+                _, info = core.preview(body.get("position") or {})
                 return self.send_json({"ok": True, "url": "/preview/preview_small.jpg",
-                                       "full": "/preview/preview.jpg", "t": time.time()})
+                                       "full": "/preview/preview.jpg", "t": time.time(),
+                                       "info": info})
             except Exception as e:  # noqa: BLE001
                 return self.send_json({"ok": False, "error": str(e)})
         if u.path == "/api/live":

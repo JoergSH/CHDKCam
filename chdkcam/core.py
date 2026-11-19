@@ -313,6 +313,39 @@ def _set_latest(pid, path):
     os.replace(tmp, os.path.join(LATEST, pid + ".jpg"))
 
 
+TV_STEPS = [15, 13, 10, 8, 6, 5, 4, 3.2, 2.5, 2, 1.6, 1.3, 1, 0.8, 0.6, 0.5, 0.4, 0.3,
+            1/4, 1/5, 1/6, 1/8, 1/10, 1/13, 1/15, 1/20, 1/25, 1/30, 1/40, 1/50, 1/60, 1/80,
+            1/100, 1/125, 1/160, 1/200, 1/250, 1/320, 1/400, 1/500, 1/640, 1/800, 1/1000,
+            1/1250, 1/1600, 1/2000, 1/2500, 1/3200]
+ISO_STEPS = [80, 100, 125, 160, 200, 250, 320, 400, 500, 640, 800, 1000, 1250, 1600]
+
+
+def _nearest_log(v, steps):
+    import math
+    return min(steps, key=lambda s: abs(math.log(s) - math.log(v)))
+
+
+def shot_info(out):
+    """Liest Fokus (mm), Belichtungszeit und ISO der Aufnahmen aus der chdkptp-Ausgabe."""
+    info = {}
+    for v in _returns(out):
+        if not v.startswith("SHOT:"):
+            continue
+        try:
+            _, pid, focus, tv96, sv96 = v.split(":")
+            tv = 2 ** (-int(tv96) / 96.0)
+            iso = 3.125 * 2 ** ((int(sv96) + 69) / 96.0)   # "Markt"-ISO wie im Kamera-Display
+        except ValueError:
+            continue
+        tv = _nearest_log(tv, TV_STEPS)
+        info[pid] = {
+            "focus_mm": int(focus),
+            "tv": ("1/%d" % round(1 / tv)) if tv < 0.3 else ("%g" % tv),
+            "iso": _nearest_log(iso, ISO_STEPS),
+        }
+    return info
+
+
 def shoot_positions(c, positions, dest_fn, timeout=None):
     """Faehrt die Positionen an und loest jeweils aus.
     dest_fn(p) liefert den Zielpfad ohne Endung. Gibt {id: pfad|None} und Ausgabe zurueck."""
@@ -332,6 +365,8 @@ def shoot_positions(c, positions, dest_fn, timeout=None):
         if props:
             cmds.append("luar local pc=require'propcase' %s sleep(500) return 1" % " ".join(props))
         cmds.append("rs %s -nosubst%s" % (base, rs_args(p)))
+        # was hat die Kamera tatsaechlich genommen? (Fokus/Belichtung der letzten Aufnahme)
+        cmds.append("luar return 'SHOT:%s:'..get_focus()..':'..get_tv96()..':'..get_sv96()" % p["id"])
         if c["shot_pause_ms"]:
             cmds.append("luar sleep(%d) return 1" % c["shot_pause_ms"])
     if c["after"] == "home":
@@ -425,7 +460,7 @@ def preview(p, c=None):
     if path != final:
         os.replace(path, final)
     make_thumb(final, os.path.join(PREVIEW, "preview_small.jpg"), width=1280)
-    return final
+    return final, shot_info(out).get(p["id"], {})
 
 
 def liveview(zoom=None, c=None):

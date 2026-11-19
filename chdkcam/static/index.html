@@ -203,7 +203,14 @@ function renderPositions(){
       msg.textContent=r.ok?'':'✗ '+r.error;if(r.ok)img.innerHTML=`<img src="${r.url}?t=${r.t}">`;};
     card.querySelector('[data-prev]').onclick=async()=>{busy(true);msg.textContent='Probebild … (ca. 10–20 s)';
       readPositions();const r=await api('/api/preview',{position:CFG.positions[i]});busy(false);
-      msg.textContent=r.ok?'':'✗ '+r.error;if(r.ok)img.innerHTML=`<a href="${r.full}?t=${r.t}" target="_blank"><img src="${r.url}?t=${r.t}"></a>`;};
+      if(!r.ok){msg.textContent='✗ '+r.error;return;}
+      const f=r.info||{};
+      msg.innerHTML=f.focus_mm!==undefined?`Kamera nahm: Fokus <b>${f.focus_mm} mm</b> · ${esc(f.tv)} s · ISO ${f.iso} <button class="b" data-takef>Fokus übernehmen</button> <button class="b" data-take>alles übernehmen</button>`:'';
+      const done=t=>msg.innerHTML=t+' eingetragen – <b>Speichern</b> nicht vergessen';
+      const tf=msg.querySelector('[data-takef]'),tb=msg.querySelector('[data-take]');
+      if(tf)tf.onclick=()=>{q('focus_mm').value=f.focus_mm;done('Fokus');};
+      if(tb)tb.onclick=()=>{q('focus_mm').value=f.focus_mm;q('tv').value=f.tv;q('iso').value=f.iso;done('Fokus, Belichtung und ISO');};
+      img.innerHTML=`<a href="${r.full}?t=${r.t}" target="_blank"><img src="${r.url}?t=${r.t}"></a>`;};
   });
 }
 function readPositions(){
