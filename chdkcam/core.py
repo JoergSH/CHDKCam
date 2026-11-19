@@ -33,6 +33,8 @@ THUMBS = os.path.join(DATA, "thumbs")
 LATEST = os.path.join(DATA, "latest")
 VIDEOS = os.path.join(DATA, "videos")
 PREVIEW = os.path.join(DATA, "preview")
+PHOTOS = os.path.join(DATA, "photos")
+PHOTO_THUMBS = os.path.join(PHOTOS, "thumbs")
 THUMB_W = 480
 ZOOM_MAX = 128          # SX20: 129 Stufen (0..128); wird beim Kamera-Check aktualisiert
 FLASH_MODES = {"auto": 0, "on": 1, "off": 2}   # propcase FLASH_MODE
@@ -65,7 +67,7 @@ DEFAULT_CFG = {
 
 # ------------------------------------------------------------ Hilfsfunktionen
 def ensure_dirs():
-    for d in (DATA, IMAGES, THUMBS, LATEST, VIDEOS, PREVIEW):
+    for d in (DATA, IMAGES, THUMBS, LATEST, VIDEOS, PREVIEW, PHOTOS, PHOTO_THUMBS):
         os.makedirs(d, exist_ok=True)
 
 
@@ -138,6 +140,7 @@ def validate_position(p, idx):
         "iso": _clamp(p.get("iso", 0), 0, 3200),
         "flash": fl,
         "wb": wb,
+        "dng": bool(p.get("dng", False)),
         "enabled": bool(p.get("enabled", True)),
     }
 
@@ -279,6 +282,8 @@ def rs_args(p):
         a += " -tv=%s" % p["tv"]
     if p.get("iso"):
         a += " -svm=%d" % p["iso"]
+    if p.get("dng"):
+        a += " -jpg -dng"
     return a
 
 
@@ -523,6 +528,60 @@ def preview(p, c=None):
     if ex.get("iso"):
         info["iso"] = _nearest_log(ex["iso"], ISO_STEPS)
     return final, info
+
+
+def photo(p, c=None):
+    """Einzelfoto mit den uebergebenen Einstellungen, gespeichert unter photos/ (optional + DNG)."""
+    c = c or load_cfg()
+    ensure_dirs()
+    p = validate_position(dict(p, id="foto"), 0)
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    base = os.path.join(PHOTOS, stamp)
+    with CamLock(timeout=60):
+        res, out = shoot_positions(dict(c, after="stay"), [p], lambda _p: base,
+                                   timeout=180 if p["dng"] else None)
+    path = res.get("foto")
+    if not path:
+        errs = _errors(out)
+        raise RuntimeError("; ".join(errs[:3]) or "kein Bild erhalten")
+    final = base + ".jpg"
+    if path != final:
+        os.replace(path, final)
+    make_thumb(final, os.path.join(PHOTO_THUMBS, stamp + ".jpg"))
+    info = shot_info(out).get("foto", {})
+    ex = exif_exposure(final)
+    if ex.get("tv_s"):
+        info["tv"] = fmt_tv(ex["tv_s"])
+    if ex.get("iso"):
+        info["iso"] = _nearest_log(ex["iso"], ISO_STEPS)
+    return {"name": stamp, "dng": os.path.isfile(base + ".dng"), "info": info}
+
+
+def list_photos():
+    out = []
+    if not os.path.isdir(PHOTOS):
+        return out
+    for f in sorted(os.listdir(PHOTOS), reverse=True):
+        m = re.match(r"^(\d{8}_\d{6})\.jpg$", f)
+        if not m:
+            continue
+        n = m.group(1)
+        jpg = os.path.join(PHOTOS, f)
+        dng = os.path.join(PHOTOS, n + ".dng")
+        out.append({"name": n, "jpg_mb": round(os.path.getsize(jpg) / 1e6, 1),
+                    "dng_mb": round(os.path.getsize(dng) / 1e6, 1) if os.path.isfile(dng) else 0})
+    return out
+
+
+def delete_photo(name):
+    if not re.match(r"^\d{8}_\d{6}$", name or ""):
+        return
+    for f in (os.path.join(PHOTOS, name + ".jpg"), os.path.join(PHOTOS, name + ".dng"),
+              os.path.join(PHOTO_THUMBS, name + ".jpg")):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
 
 
 def liveview(zoom=None, c=None):

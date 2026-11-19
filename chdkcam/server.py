@@ -24,6 +24,7 @@ STATIC = os.path.join(HERE, "static")
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 IMG_RE = re.compile(r"^\d{8}_\d{6}\.jpg$")
 VID_RE = re.compile(r"^[\w.-]+\.mp4$")
+PHOTO_RE = re.compile(r"^\d{8}_\d{6}\.(jpg|dng)$")
 PREV_RE = re.compile(r"^(preview|preview_small|live)\.jpg$")
 
 job_lock = threading.Lock()
@@ -288,6 +289,14 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/daily_videos":
                 pid = q.get("pos", "")
                 return self.send_json(daily_videos(pid) if self.valid_pid(pid) else [])
+            if u.path == "/api/photos":
+                return self.send_json(core.list_photos())
+            if len(parts) == 2 and parts[0] == "photo" and PHOTO_RE.match(parts[1]):
+                ctype = "image/jpeg" if parts[1].endswith(".jpg") else "image/x-adobe-dng"
+                return self.send_file(os.path.join(core.PHOTOS, parts[1]), ctype, cache=True)
+            if len(parts) == 3 and parts[:2] == ["photo", "thumb"] and PHOTO_RE.match(parts[2]):
+                return self.send_file(os.path.join(core.PHOTO_THUMBS, parts[2]), "image/jpeg",
+                                      cache=True)
             if u.path == "/api/videos":
                 return self.send_json(list_videos())
             if u.path == "/api/log":
@@ -337,6 +346,15 @@ class Handler(BaseHTTPRequestHandler):
                                        "info": info})
             except Exception as e:  # noqa: BLE001
                 return self.send_json({"ok": False, "error": str(e)})
+        if u.path == "/api/photo":
+            try:
+                r = core.photo(body.get("settings") or {})
+                return self.send_json(dict(r, ok=True))
+            except Exception as e:  # noqa: BLE001
+                return self.send_json({"ok": False, "error": str(e)})
+        if u.path == "/api/photo/delete":
+            core.delete_photo(body.get("name"))
+            return self.send_json({"ok": True})
         if u.path == "/api/live":
             try:
                 core.liveview(body.get("zoom"))

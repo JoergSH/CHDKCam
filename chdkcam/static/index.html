@@ -48,6 +48,7 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
   <nav id="nav">
     <button data-t="home" class="on">Übersicht</button>
     <button data-t="pos">Positionen</button>
+    <button data-t="foto">Foto</button>
     <button data-t="gal">Galerie</button>
     <button data-t="vid">Video</button>
     <button data-t="set">Einstellungen</button>
@@ -77,6 +78,23 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
     <button class="b p" id="savepos">Speichern</button>
     <span id="posmsg" class="dim"></span>
   </div>
+</section>
+
+<section id="foto">
+  <div class="card" id="fcard">
+    <div class="row"><label>Werte von Position <select id="fsrc"><option value="">–</option></select></label></div>
+    <div class="row"><label>Zoom <input type="range" min="0" max="128" id="f_zoom" value="0">
+      <input type="number" min="0" max="128" id="f_zoomn" value="0"></label></div>
+    <div class="row"><label>Fokus mm <input type="number" id="f_focus" value="0" min="0"></label>
+      <label>Belichtung s <input id="f_tv" placeholder="auto" style="width:80px"></label>
+      <label>ISO <input type="number" id="f_iso" value="0" min="0" max="3200"></label>
+      <label>Blitz <select id="f_flash"><option value="camera">wie Kamera</option><option value="off">aus</option><option value="auto">automatisch</option><option value="on">immer</option></select></label>
+      <label>Weißabgleich <select id="f_wb"><option value="camera">wie Kamera</option><option value="auto">automatisch</option><option value="day">Tageslicht</option><option value="cloudy">bewölkt</option><option value="tungsten">Kunstlicht</option><option value="fluor">Leuchtstoff</option><option value="fluor_h">Leuchtstoff H</option><option value="custom">manuell (an der Kamera gemessen)</option></select></label></div>
+    <div class="row"><label><input type="checkbox" id="f_dng"> zusätzlich RAW (DNG, ca. 19 MB)</label></div>
+    <div class="row"><button class="b" id="flive">Sucherbild</button><button class="b p" id="fshoot">📷 Foto aufnehmen</button><span id="fmsg" class="dim"></span></div>
+    <div class="prev" id="fimg"></div>
+  </div>
+  <div class="card"><h3>Fotos</h3><div class="thumbs" id="fthumbs"></div></div>
 </section>
 
 <section id="gal">
@@ -152,6 +170,7 @@ document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('main section').forEach(s=>s.classList.toggle('on',s.id===b.dataset.t));
   if(b.dataset.t==='gal')loadGalPos(); if(b.dataset.t==='vid')loadVideos(); if(b.dataset.t==='set')loadSet();
   if(b.dataset.t==='pos')renderPositions();
+  if(b.dataset.t==='foto')loadFoto();
 });
 
 // ---------- Übersicht
@@ -240,6 +259,31 @@ $('savepos').onclick=async()=>{readPositions();CFG=await api('/api/config',{posi
 $('camchk').onclick=async()=>{$('camst').textContent='frage Kamera …';const r=await api('/api/camera');
   $('camst').innerHTML=r.connected?`<span class="ok">verbunden</span> · ${esc(r.platform)} · CHDK ${esc(r.chdk)} · Zoom ${r.zoom}/${r.zoom_steps-1} · ${(r.vbatt_mv/1000).toFixed(2)} V · ${r.rec?'Aufnahmemodus':'Wiedergabe'}`
     :`<span class="err">nicht verbunden</span> ${esc(r.error)}`;};
+
+// ---------- Foto
+function loadFoto(){const sel=$('fsrc'),keep=sel.value;
+  sel.innerHTML='<option value="">–</option>'+(CFG?.positions||[]).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');sel.value=keep;loadPhotos();}
+$('fsrc').onchange=()=>{const p=(CFG.positions||[]).find(x=>x.id===$('fsrc').value);if(!p)return;
+  $('f_zoom').value=$('f_zoomn').value=p.zoom;$('f_focus').value=p.focus_mm;$('f_tv').value=p.tv;$('f_iso').value=p.iso;
+  $('f_flash').value=p.flash||'camera';$('f_wb').value=p.wb||'camera';};
+$('f_zoom').oninput=()=>$('f_zoomn').value=$('f_zoom').value;$('f_zoomn').oninput=()=>$('f_zoom').value=$('f_zoomn').value;
+const fset=()=>({zoom:+$('f_zoomn').value,focus_mm:+$('f_focus').value||0,tv:$('f_tv').value.trim(),iso:+$('f_iso').value||0,
+  flash:$('f_flash').value,wb:$('f_wb').value,dng:$('f_dng').checked});
+const fbusy=on=>document.querySelectorAll('#fcard button').forEach(b=>b.disabled=on);
+$('flive').onclick=async()=>{fbusy(true);$('fmsg').textContent='Sucherbild …';const r=await api('/api/live',{zoom:+$('f_zoomn').value});fbusy(false);
+  $('fmsg').textContent=r.ok?'':'✗ '+r.error;if(r.ok)$('fimg').innerHTML=`<img src="${r.url}?t=${r.t}">`;};
+$('fshoot').onclick=async()=>{fbusy(true);$('fmsg').textContent='Foto … '+($('f_dng').checked?'(mit DNG ca. 15–30 s)':'(ca. 10 s)');
+  const r=await api('/api/photo',{settings:fset()});fbusy(false);
+  if(!r.ok){$('fmsg').textContent='✗ '+r.error;return;}const f=r.info||{};
+  $('fmsg').innerHTML=`✓ gespeichert${r.dng?' (JPEG + DNG)':''} · Fokus ${f.focus_mm??'?'} mm${f.tv?' · '+esc(f.tv)+' s':''}${f.iso?' · ISO '+f.iso:''}`;
+  $('fimg').innerHTML=`<a href="/photo/${r.name}.jpg" target="_blank"><img src="/photo/thumb/${r.name}.jpg?t=${Date.now()}" style="max-width:640px;width:100%"></a>`;loadPhotos();};
+async function loadPhotos(){const ph=await api('/api/photos');
+  $('fthumbs').innerHTML=ph.length?ph.map(p=>`<div><a href="/photo/${p.name}.jpg" target="_blank"><img loading="lazy" src="/photo/thumb/${p.name}.jpg"></a>
+    <div class="dim" style="font-size:12px">${p.name.slice(6,8)}.${p.name.slice(4,6)}. ${p.name.slice(9,11)}:${p.name.slice(11,13)}:${p.name.slice(13,15)}</div>
+    <div class="row" style="margin:2px 0"><a class="b" style="padding:3px 8px;text-decoration:none" href="/photo/${p.name}.jpg" download>JPG</a>
+    ${p.dng_mb?`<a class="b" style="padding:3px 8px;text-decoration:none" href="/photo/${p.name}.dng" download>DNG</a>`:''}
+    <button class="b" style="padding:3px 8px" data-pdel="${p.name}">✕</button></div></div>`).join(''):'<div class="dim">noch keine Fotos</div>';
+  document.querySelectorAll('[data-pdel]').forEach(b=>b.onclick=async()=>{if(!confirm('Foto löschen?'))return;await api('/api/photo/delete',{name:b.dataset.pdel});loadPhotos();});}
 
 // ---------- Galerie
 let GAL=[],GPOS='',GDAY='';
