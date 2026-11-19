@@ -309,7 +309,8 @@ function wbTool(box,url,full,getPos,applyWb,applyGain){
       <span>R ${rgb[0]} · G ${rgb[1]} · B ${rgb[2]}</span><span class="${ct.cls}"><b>${ct.txt}</b> (Abweichung ${ct.dev} %)</span>
       ${Math.max(...rgb)>=250?'<span class="warn">Fläche überbelichtet – Messung ungenau, lieber eine graue Stelle wählen</span>':''}
       <button class="b" data-wbt>Weißabgleich testen</button>
-      ${ct.dev>1&&applyGain&&Math.max(...rgb)<250?'<button class="b" data-cc>Farbe korrigieren</button> <button class="b" data-svp>Als eigenen Weißabgleich speichern</button>':''}`;
+      ${ct.dev>1&&applyGain&&Math.max(...rgb)<250?'<button class="b" data-cc>Farbe korrigieren</button>':''}
+      ${applyGain&&Math.max(...rgb)<250?'<button class="b" data-svp>Als eigenen Weißabgleich speichern</button>':''}`;
     const svp=info.querySelector('[data-svp]');
     if(svp)svp.onclick=async()=>{const v=await savePreset(getPos(),rgb);if(!v)return;applyWb(v,true);
       info.insertAdjacentHTML('beforeend','<div class="ok" style="width:100%">Gespeichert und ausgewählt – auch bei anderen Positionen und unter „Foto“ wählbar. <b>Speichern</b> nicht vergessen.</div>');};
