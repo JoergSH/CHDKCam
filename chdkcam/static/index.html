@@ -137,6 +137,7 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
       <label>Pause nach Auslösen (ms) <input type="number" id="s_pause" min="0" max="30000"></label></div>
     <div class="row"><label>Nach der Runde
       <select id="s_after"><option value="stay">Zoom stehen lassen</option><option value="home">auf Weitwinkel fahren</option><option value="play">Objektiv einfahren</option></select></label></div>
+    <div class="row"><label><input type="checkbox" id="s_ov"> Datum und Uhrzeit im Video einblenden</label></div>
     <div class="row"><label><input type="checkbox" id="s_dv"> Tagesvideos automatisch erstellen</label>
       <label>FPS <input type="number" id="s_dfps" min="1" max="60"></label>
       <label>Breite <select id="s_dw"><option>1280</option><option>1920</option><option>2560</option><option>3840</option></select></label></div>
@@ -348,10 +349,10 @@ async function pollJob(){const s=await api('/api/status'),j=s.job;
 
 // ---------- Einstellungen
 async function loadSet(){await loadCfg();const c=CFG;$('s_title').value=c.title;$('s_int').value=c.interval_min;$('s_ls').value=c.light_start;$('s_le').value=c.light_end;
-  $('s_settle').value=c.settle_ms;$('s_pause').value=c.shot_pause_ms;$('s_after').value=c.after;$('s_retry').value=c.retries;$('s_dv').checked=c.day_video;$('s_dfps').value=c.day_fps;$('s_dw').value=c.day_width;$('s_ptp').value=c.chdkptp;
+  $('s_settle').value=c.settle_ms;$('s_pause').value=c.shot_pause_ms;$('s_after').value=c.after;$('s_retry').value=c.retries;$('s_ov').checked=c.overlay;$('s_dv').checked=c.day_video;$('s_dfps').value=c.day_fps;$('s_dw').value=c.day_width;$('s_ptp').value=c.chdkptp;
   const l=await api('/api/log');$('lerr').textContent=l.error.join('')||'–';$('lcap').textContent=l.capture.slice().reverse().join('')||'–';}
 $('saveset').onclick=async()=>{CFG=await api('/api/config',{title:$('s_title').value,interval_min:+$('s_int').value,light_start:+$('s_ls').value,light_end:+$('s_le').value,
-  settle_ms:+$('s_settle').value,shot_pause_ms:+$('s_pause').value,after:$('s_after').value,retries:+$('s_retry').value,day_video:$('s_dv').checked,day_fps:+$('s_dfps').value,day_width:+$('s_dw').value,chdkptp:$('s_ptp').value});
+  settle_ms:+$('s_settle').value,shot_pause_ms:+$('s_pause').value,after:$('s_after').value,retries:+$('s_retry').value,overlay:$('s_ov').checked,day_video:$('s_dv').checked,day_fps:+$('s_dfps').value,day_width:+$('s_dw').value,chdkptp:$('s_ptp').value});
   showTitle();$('setmsg').textContent='✓ gespeichert';setTimeout(()=>$('setmsg').textContent='',3000);loadStatus();};
 
 $('clrlogs').onclick=async()=>{if(!confirm('Alle Logs löschen?'))return;

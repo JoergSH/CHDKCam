@@ -56,6 +56,7 @@ DEFAULT_CFG = {
     "day_video": True,     # Tagesvideos automatisch erstellen (wenn das Licht aus ist)
     "day_fps": 24,
     "day_width": 1920,
+    "overlay": True,       # Datum/Uhrzeit im Video einblenden
     "positions": [
         {"id": "weit", "name": "Übersicht", "zoom": 0, "focus_mm": 0,
          "tv": "", "iso": 0, "flash": "camera", "wb": "camera", "enabled": True},
@@ -157,6 +158,7 @@ def validate_cfg(new):
     after = new.get("after", c["after"])
     c["after"] = after if after in ("stay", "home", "play") else "stay"
     c["retries"] = _clamp(new.get("retries", c["retries"]), 0, 3)
+    c["overlay"] = bool(new.get("overlay", c["overlay"]))
     c["day_video"] = bool(new.get("day_video", c["day_video"]))
     c["day_fps"] = _clamp(new.get("day_fps", c["day_fps"]), 1, 60)
     c["day_width"] = _clamp(new.get("day_width", c["day_width"]), 320, 4000)

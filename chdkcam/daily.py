@@ -51,7 +51,8 @@ def run(force=False):
             if len(files) < 2:
                 continue
             try:
-                render.render(files, out, fps=c["day_fps"], width=c["day_width"])
+                render.render(files, out, fps=c["day_fps"], width=c["day_width"],
+                              overlay=c["overlay"])
                 core.log(core.CAP_LOG, "Tagesvideo %s (%d Bilder)" % (os.path.basename(out),
                                                                      len(files)))
                 made += 1

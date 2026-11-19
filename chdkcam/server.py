@@ -145,7 +145,8 @@ def run_render(pid, day_from, day_to, fps, width):
         set_job(state="running", kind="render", total=total, frame=frame, name=name)
 
     try:
-        render.render(files, out, fps=fps, width=width, on_progress=prog)
+        render.render(files, out, fps=fps, width=width, on_progress=prog,
+                      overlay=core.load_cfg()["overlay"])
         set_job(state="done", kind="render", name=name)
     except Exception as e:  # noqa: BLE001
         core.log_error("Video: %s" % e)

@@ -1,8 +1,15 @@
 """Zeitraffer-Video aus den Bildern einer Position (ffmpeg)."""
+import datetime
+import functools
 import os
 import re
 import subprocess
 import tempfile
+
+WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+OVERLAY_STYLE = ("FontName=DejaVu Sans,FontSize=11,PrimaryColour=&H00FFFFFF,"
+                 "OutlineColour=&H00000000,BorderStyle=1,Outline=1,Shadow=0,"
+                 "Alignment=3,MarginR=8,MarginV=6")
 
 IMG_RE = re.compile(r"^\d{8}_\d{6}\.jpg$")
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -25,6 +32,41 @@ def collect(images_dir, pid, day_from=None, day_to=None):
     return files
 
 
+@functools.lru_cache(maxsize=8)
+def has_filter(name):
+    try:
+        r = subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-filters"],
+                           capture_output=True, text=True, timeout=10)
+        return (" %s " % name) in r.stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def srt_time(t):
+    ms = int(round(t * 1000))
+    h, ms = divmod(ms, 3600000)
+    m, ms = divmod(ms, 60000)
+    sec, ms = divmod(ms, 1000)
+    return "%02d:%02d:%02d,%03d" % (h, m, sec, ms)
+
+
+def overlay_filter(files, fps, tmpdir):
+    """Datum/Uhrzeit (aus dem Dateinamen) als Untertitel einblenden, ein Eintrag je Bild."""
+    if not has_filter("subtitles"):
+        return ""
+    srt = os.path.join(tmpdir, "t.srt")
+    with open(srt, "w") as fh:
+        for i, f in enumerate(files):
+            try:
+                t = datetime.datetime.strptime(os.path.basename(f)[:15], "%Y%m%d_%H%M%S")
+            except ValueError:
+                continue
+            txt = "%s %s" % (WEEKDAYS[t.weekday()], t.strftime("%d.%m.%Y  %H:%M"))
+            a, b = max(0.0, (i - 0.5) / fps), (i + 0.5) / fps
+            fh.write("%d\n%s --> %s\n%s\n\n" % (i + 1, srt_time(a), srt_time(b), txt))
+    return ",subtitles=%s:force_style='%s'" % (srt, OVERLAY_STYLE)
+
+
 def encoder():
     try:
         out = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"],
@@ -34,7 +76,7 @@ def encoder():
     return "libx264" if "libx264" in out else "mpeg4"
 
 
-def render(files, out_path, fps=24, width=1920, on_progress=None):
+def render(files, out_path, fps=24, width=1920, on_progress=None, overlay=False):
     """Baut das Video. on_progress(frame, total) wird regelmaessig aufgerufen."""
     if not files:
         raise RuntimeError("keine Bilder im Zeitraum")
@@ -42,7 +84,10 @@ def render(files, out_path, fps=24, width=1920, on_progress=None):
     with tempfile.TemporaryDirectory(prefix="chdkcam-") as tmp:
         for i, f in enumerate(files):
             os.symlink(f, os.path.join(tmp, "%06d.jpg" % i))
-        vf = "scale=%d:-2:flags=bicubic,format=yuv420p" % width
+        vf = "scale=%d:-2:flags=bicubic" % width
+        if overlay:
+            vf += overlay_filter(files, fps, tmp)
+        vf += ",format=yuv420p"
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
                "-framerate", str(fps), "-i", os.path.join(tmp, "%06d.jpg"),
                "-vf", vf, "-c:v", enc]
