@@ -325,24 +325,74 @@ def _nearest_log(v, steps):
     return min(steps, key=lambda s: abs(math.log(s) - math.log(v)))
 
 
+def exif_exposure(path):
+    """Liest Belichtungszeit (s) und ISO aus dem EXIF einer JPEG-Datei (ohne Zusatzpakete)."""
+    import struct
+    try:
+        with open(path, "rb") as f:
+            data = f.read(256 * 1024)
+    except OSError:
+        return {}
+    i = data.find(b"Exif\x00\x00")
+    if i < 0:
+        return {}
+    t = data[i + 6:]
+    end = "<" if t[:2] == b"II" else ">"
+
+    def u16(o):
+        return struct.unpack(end + "H", t[o:o + 2])[0]
+
+    def u32(o):
+        return struct.unpack(end + "I", t[o:o + 4])[0]
+
+    def entries(off):
+        out = {}
+        try:
+            n = u16(off)
+            for k in range(n):
+                e = off + 2 + 12 * k
+                out[u16(e)] = (u16(e + 2), u32(e + 4), e + 8)
+        except struct.error:
+            pass
+        return out
+
+    res = {}
+    try:
+        ifd0 = entries(u32(4))
+        if 0x8769 not in ifd0:
+            return {}
+        ex = entries(ifd0[0x8769][2] and u32(ifd0[0x8769][2]))
+        if 0x829A in ex:                      # ExposureTime (RATIONAL, bei manchen DOUBLE)
+            typ, _, vo = ex[0x829A]
+            o = u32(vo)
+            if typ == 12:
+                res["tv_s"] = struct.unpack(end + "d", t[o:o + 8])[0]
+            else:
+                num, den = u32(o), u32(o + 4)
+                if den:
+                    res["tv_s"] = num / den
+        if 0x8827 in ex:                      # ISO, SHORT
+            res["iso"] = u16(ex[0x8827][2])
+    except struct.error:
+        pass
+    return res
+
+
+def fmt_tv(tv):
+    tv = _nearest_log(tv, TV_STEPS)
+    return ("1/%d" % round(1 / tv)) if tv < 0.3 else ("%g" % tv)
+
+
 def shot_info(out):
-    """Liest Fokus (mm), Belichtungszeit und ISO der Aufnahmen aus der chdkptp-Ausgabe."""
+    """Fokus (mm), den die Kamera bei der letzten Aufnahme je Position genommen hat."""
     info = {}
     for v in _returns(out):
-        if not v.startswith("SHOT:"):
-            continue
-        try:
-            _, pid, focus, tv96, sv96 = v.split(":")
-            tv = 2 ** (-int(tv96) / 96.0)
-            iso = 3.125 * 2 ** ((int(sv96) + 69) / 96.0)   # "Markt"-ISO wie im Kamera-Display
-        except ValueError:
-            continue
-        tv = _nearest_log(tv, TV_STEPS)
-        info[pid] = {
-            "focus_mm": int(focus),
-            "tv": ("1/%d" % round(1 / tv)) if tv < 0.3 else ("%g" % tv),
-            "iso": _nearest_log(iso, ISO_STEPS),
-        }
+        if v.startswith("SHOT:"):
+            try:
+                _, pid, focus = v.split(":")
+                info[pid] = {"focus_mm": int(focus)}
+            except ValueError:
+                pass
     return info
 
 
@@ -366,7 +416,7 @@ def shoot_positions(c, positions, dest_fn, timeout=None):
             cmds.append("luar local pc=require'propcase' %s sleep(500) return 1" % " ".join(props))
         cmds.append("rs %s -nosubst%s" % (base, rs_args(p)))
         # was hat die Kamera tatsaechlich genommen? (Fokus/Belichtung der letzten Aufnahme)
-        cmds.append("luar return 'SHOT:%s:'..get_focus()..':'..get_tv96()..':'..get_sv96()" % p["id"])
+        cmds.append("luar return 'SHOT:%s:'..get_focus()" % p["id"])
         if c["shot_pause_ms"]:
             cmds.append("luar sleep(%d) return 1" % c["shot_pause_ms"])
     if c["after"] == "home":
@@ -460,7 +510,13 @@ def preview(p, c=None):
     if path != final:
         os.replace(path, final)
     make_thumb(final, os.path.join(PREVIEW, "preview_small.jpg"), width=1280)
-    return final, shot_info(out).get(p["id"], {})
+    info = shot_info(out).get(p["id"], {})
+    ex = exif_exposure(final)          # Belichtung steht zuverlaessig nur im EXIF
+    if ex.get("tv_s"):
+        info["tv"] = fmt_tv(ex["tv_s"])
+    if ex.get("iso"):
+        info["iso"] = _nearest_log(ex["iso"], ISO_STEPS)
+    return final, info
 
 
 def liveview(zoom=None, c=None):
