@@ -46,8 +46,9 @@ def run(force=False):
         for day in finished_days(c, p["id"], now):
             out = os.path.join(core.VIDEOS, day_name(p["id"], day))
             if os.path.exists(out):
+                archive(c, p["id"], day, out)
                 continue
-            files = render.collect(core.IMAGES, p["id"], day, day)
+            files = render.collect(core.image_dirs(c), p["id"], day, day)
             if len(files) < 2:
                 continue
             try:
@@ -58,7 +59,28 @@ def run(force=False):
                 made += 1
             except Exception as e:  # noqa: BLE001
                 core.log_error("Tagesvideo %s/%s: %s" % (p["id"], day, e))
+                continue
+            archive(c, p["id"], day, out)
     return made
+
+
+def archive(c, pid, day, video):
+    """Tag sichern, wenn Archiv aktiv und lokal noch Bilder liegen (erst nach fertigem Video)."""
+    if not c.get("archive") or not os.path.isfile(video):
+        return
+    if not os.path.isdir(os.path.join(core.IMAGES, pid, day)):
+        return
+    marker = os.path.join(core.IMAGES, pid, day, ".archived")
+    if os.path.exists(marker) and not c.get("archive_delete"):
+        return
+    try:
+        n = core.archive_day(pid, day, video, c)
+        if os.path.isdir(os.path.dirname(marker)):
+            open(marker, "w").close()
+        core.log(core.CAP_LOG, "Archiv: %s/%s gesichert (%d Dateien)%s" % (
+            pid, day, n, ", lokal geloescht" if c.get("archive_delete") else ""))
+    except Exception as e:  # noqa: BLE001
+        core.log_error("Archiv %s/%s: %s" % (pid, day, e))
 
 
 if __name__ == "__main__":

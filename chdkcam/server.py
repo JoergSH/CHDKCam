@@ -43,23 +43,22 @@ def job_snapshot():
 
 
 # ---------------------------------------------------------------- Daten
-def list_days(pid):
-    d = os.path.join(core.IMAGES, pid)
-    if not os.path.isdir(d):
-        return []
-    out = []
-    for day in sorted(os.listdir(d), reverse=True):
-        if DAY_RE.match(day):
-            n = len([f for f in os.listdir(os.path.join(d, day)) if IMG_RE.match(f)])
-            out.append({"day": day, "count": n})
-    return out
-
-
 def list_images(pid, day):
-    d = os.path.join(core.IMAGES, pid, day)
-    if not os.path.isdir(d):
-        return []
-    return sorted(f for f in os.listdir(d) if IMG_RE.match(f))
+    names = set()
+    for base in core.image_dirs():
+        d = os.path.join(base, pid, day)
+        if os.path.isdir(d):
+            names.update(f for f in os.listdir(d) if IMG_RE.match(f))
+    return sorted(names)
+
+
+def list_days(pid):
+    days = set()
+    for base in core.image_dirs():
+        d = os.path.join(base, pid)
+        if os.path.isdir(d):
+            days.update(x for x in os.listdir(d) if DAY_RE.match(x))
+    return [{"day": day, "count": len(list_images(pid, day))} for day in sorted(days, reverse=True)]
 
 
 def next_due(c):
@@ -99,6 +98,7 @@ def status():
         "last_ok": st.get("last_ok"),
         "positions": pos,
         "disk_free_gb": round(du.free / 1e9, 1),
+        "archive": core.archive_status(c) if c.get("archive") else None,
         "job": job_snapshot(),
     }
 
@@ -136,7 +136,7 @@ def run_capture(pid):
 
 
 def run_render(pid, day_from, day_to, fps, width):
-    files = render.collect(core.IMAGES, pid, day_from, day_to)
+    files = render.collect(core.image_dirs(), pid, day_from, day_to)
     name = "%s_%s_bis_%s_%dfps.mp4" % (pid, day_from or "anfang", day_to or "heute", fps)
     out = os.path.join(core.VIDEOS, name)
     set_job(state="running", kind="render", total=len(files), frame=0, name=name)
@@ -300,18 +300,22 @@ class Handler(BaseHTTPRequestHandler):
                                       cache=True)
             if u.path == "/api/videos":
                 return self.send_json(list_videos())
+            if u.path == "/api/archive":
+                return self.send_json(core.archive_status())
             if u.path == "/api/log":
                 return self.send_json({"error": tail(core.ERR_LOG),
                                        "capture": tail(core.CAP_LOG)})
             if len(parts) == 4 and parts[0] in ("img", "thumb"):
                 _, pid, day, name = parts
                 if core.ID_RE.match(pid) and DAY_RE.match(day) and IMG_RE.match(name):
-                    base = core.IMAGES if parts[0] == "img" else core.THUMBS
-                    path = os.path.join(base, pid, day, name)
-                    if parts[0] == "thumb" and not os.path.isfile(path):
-                        src = os.path.join(core.IMAGES, pid, day, name)
-                        if os.path.isfile(src):
-                            core.make_thumb(src, path)
+                    if parts[0] == "img":
+                        path = core.find_image(pid, day, name) or ""
+                    else:
+                        path = os.path.join(core.THUMBS, pid, day, name)
+                        if not os.path.isfile(path):
+                            src = core.find_image(pid, day, name)
+                            if src:
+                                core.make_thumb(src, path)
                     return self.send_file(path, "image/jpeg", cache=True)
             if len(parts) == 2 and parts[0] == "latest":
                 pid = parts[1][:-4] if parts[1].endswith(".jpg") else ""

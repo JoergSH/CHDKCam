@@ -60,6 +60,9 @@ DEFAULT_CFG = {
     "day_fps": 24,
     "day_width": 1920,
     "overlay": True,       # Datum/Uhrzeit im Video einblenden
+    "archive": False,      # nach dem Tagesvideo Bilder (und Video) auf ein Archiv-Laufwerk sichern
+    "archive_dir": "",     # z. B. /mnt/sdkarte
+    "archive_delete": False,  # lokale Originale nach erfolgreicher Sicherung loeschen
     "positions": [
         {"id": "weit", "name": "Übersicht", "zoom": 0, "focus_mm": 0,
          "tv": "", "iso": 0, "flash": "camera", "wb": "camera", "enabled": True},
@@ -164,6 +167,9 @@ def validate_cfg(new):
     after = new.get("after", c["after"])
     c["after"] = after if after in ("stay", "home", "play") else "stay"
     c["retries"] = _clamp(new.get("retries", c["retries"]), 0, 3)
+    c["archive"] = bool(new.get("archive", c["archive"]))
+    c["archive_dir"] = str(new.get("archive_dir", c["archive_dir"]) or "").strip()[:200]
+    c["archive_delete"] = bool(new.get("archive_delete", c["archive_delete"]))
     c["overlay"] = bool(new.get("overlay", c["overlay"]))
     c["day_video"] = bool(new.get("day_video", c["day_video"]))
     c["day_fps"] = _clamp(new.get("day_fps", c["day_fps"]), 1, 60)
@@ -630,6 +636,91 @@ def liveview(zoom=None, c=None):
                    capture_output=True, timeout=30)
     os.remove(ppm)
     return jpg
+
+
+# ------------------------------------------------------------ Archiv
+def archive_root(c=None):
+    """Zielordner im Archiv-Laufwerk, oder None wenn nicht aktiv/erreichbar."""
+    c = c or load_cfg()
+    d = c.get("archive_dir")
+    if not d:
+        return None
+    d = os.path.expanduser(d)
+    if not os.path.isdir(d):
+        return None
+    return os.path.join(d, "chdkcam")
+
+
+def archive_status(c=None):
+    c = c or load_cfg()
+    d = os.path.expanduser(c.get("archive_dir") or "")
+    if not d:
+        return {"ok": False, "msg": "kein Ordner eingestellt"}
+    if not os.path.isdir(d):
+        return {"ok": False, "msg": "Ordner nicht vorhanden (Karte nicht eingehaengt?)"}
+    if not os.access(d, os.W_OK):
+        return {"ok": False, "msg": "keine Schreibrechte"}
+    du = shutil.disk_usage(d)
+    return {"ok": True, "msg": "bereit", "free_gb": round(du.free / 1e9, 1),
+            "total_gb": round(du.total / 1e9, 1)}
+
+
+def image_dirs(c=None):
+    """Alle Orte mit Bildern: lokal, dazu das Archiv (falls erreichbar)."""
+    dirs = [IMAGES]
+    a = archive_root(c)
+    if a and os.path.isdir(os.path.join(a, "images")):
+        dirs.append(os.path.join(a, "images"))
+    return dirs
+
+
+def find_image(pid, day, name, c=None):
+    for base in image_dirs(c):
+        p = os.path.join(base, pid, day, name)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def archive_day(pid, day, video=None, c=None):
+    """Kopiert die Bilder eines Tages (und optional das Tagesvideo) ins Archiv.
+    Loescht die lokalen Originale danach, wenn eingestellt. Gibt Anzahl kopierter Bilder zurueck."""
+    c = c or load_cfg()
+    root = archive_root(c)
+    if not root:
+        raise RuntimeError("Archiv nicht erreichbar: %s" % archive_status(c)["msg"])
+    src = os.path.join(IMAGES, pid, day)
+    if not os.path.isdir(src):
+        return 0
+    dst = os.path.join(root, "images", pid, day)
+    os.makedirs(dst, exist_ok=True)
+    files = sorted(f for f in os.listdir(src) if f.endswith((".jpg", ".dng")))
+    need = sum(os.path.getsize(os.path.join(src, f)) for f in files)
+    if shutil.disk_usage(root).free < need + 200e6:
+        raise RuntimeError("Archiv voll")
+    for f in files:
+        s_, d_ = os.path.join(src, f), os.path.join(dst, f)
+        if os.path.isfile(d_) and os.path.getsize(d_) == os.path.getsize(s_):
+            continue
+        tmp = d_ + ".part"
+        shutil.copyfile(s_, tmp)
+        if os.path.getsize(tmp) != os.path.getsize(s_):
+            raise RuntimeError("Kopierfehler bei %s" % f)
+        os.replace(tmp, d_)
+    if video and os.path.isfile(video):
+        vdst = os.path.join(root, "videos")
+        os.makedirs(vdst, exist_ok=True)
+        if not os.path.isfile(os.path.join(vdst, os.path.basename(video))):
+            shutil.copyfile(video, os.path.join(vdst, os.path.basename(video)))
+    if c.get("archive_delete"):
+        for f in files:
+            if os.path.getsize(os.path.join(dst, f)) == os.path.getsize(os.path.join(src, f)):
+                os.remove(os.path.join(src, f))
+        try:
+            os.rmdir(src)
+        except OSError:
+            pass
+    return len(files)
 
 
 # ------------------------------------------------------------ Aufraeumen

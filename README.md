@@ -73,6 +73,17 @@ Alternativ aus dem geklonten Repo: `git clone https://github.com/JoergSH/chdkcam
 5. An der Kamera: *Autom. Abschaltung: Aus*, Modus **P**, ggf. manuellen Weißabgleich messen.
 6. Dauerbetrieb nur mit Netzteil (SX20: DC IN 7,4 V, 2 A).
 
+## Sicherung auf SD-Karte / USB-Laufwerk
+
+In den Einstellungen lässt sich ein Archiv-Ordner angeben. Nach dem Tagesvideo werden die Bilder
+des Tages (und das Video) dorthin kopiert, wahlweise mit anschließendem Löschen der lokalen Originale.
+Galerie und Videoerstellung greifen automatisch auch auf die gesicherten Bilder zu.
+
+Das Laufwerk sollte fest eingehängt sein (nicht nur beim Desktop-Login), z. B. in `/etc/fstab`:
+```
+UUID=XXXX-XXXX  /mnt/sdkarte  exfat  defaults,nofail,uid=1000,gid=1000  0  0
+```
+
 ## Hinweise SX20
 
 - Nach dem Auslösen braucht die Kamera eine Pause, bevor gezoomt wird, sonst stürzt sie ab

@@ -142,6 +142,9 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
       <label>FPS <input type="number" id="s_dfps" min="1" max="60"></label>
       <label>Breite <select id="s_dw"><option>1280</option><option>1920</option><option>2560</option><option>3840</option></select></label></div>
     <div class="dim" style="margin-bottom:6px">Pro Position und Tag ein Video, erstellt nachts bei ausgeschaltetem Licht (Liste unter „Video“).</div>
+    <div class="row" style="margin-top:8px"><label><input type="checkbox" id="s_ar"> Nach dem Tagesvideo Bilder sichern auf</label>
+      <input id="s_ard" placeholder="/mnt/sdkarte" style="width:220px"><span id="s_arst" class="dim"></span></div>
+    <div class="row"><label><input type="checkbox" id="s_ardel"> danach lokale Bilder löschen (Galerie und Videos nutzen dann die Sicherung)</label></div>
     <div class="row"><label>Wiederholungen bei Fehler <input type="number" id="s_retry" min="0" max="3"></label></div>
     <div class="row"><label>chdkptp <input id="s_ptp" style="width:320px"></label></div>
     <div class="row"><button class="b p" id="saveset">Speichern</button><span id="setmsg" class="dim"></span></div>
@@ -185,6 +188,7 @@ async function loadStatus(){
     ${l?.vbatt_mv?`<span class="dim">Kamera ${(l.vbatt_mv/1000).toFixed(2)} V</span>`:''}
     <span class="dim">alle ${s.interval_min} min, ${s.light_start}–${s.light_end} Uhr</span>
     <span class="dim">frei: ${s.disk_free_gb} GB</span>
+    ${s.archive?(s.archive.ok?`<span class="dim">Sicherung: ${s.archive.free_gb} GB frei</span>`:`<span class="err">Sicherung: ${esc(s.archive.msg)}</span>`):''}
     <button class="b p" id="capall">Jetzt aufnehmen</button><span id="capmsg" class="dim"></span>`;
   $('capall').onclick=()=>capture(null,$('capmsg'));
   const j=s.job;
@@ -353,10 +357,11 @@ async function pollJob(){const s=await api('/api/status'),j=s.job;
 
 // ---------- Einstellungen
 async function loadSet(){await loadCfg();const c=CFG;$('s_title').value=c.title;$('s_int').value=c.interval_min;$('s_ls').value=c.light_start;$('s_le').value=c.light_end;
-  $('s_settle').value=c.settle_ms;$('s_pause').value=c.shot_pause_ms;$('s_after').value=c.after;$('s_retry').value=c.retries;$('s_ov').checked=c.overlay;$('s_dv').checked=c.day_video;$('s_dfps').value=c.day_fps;$('s_dw').value=c.day_width;$('s_ptp').value=c.chdkptp;
+  $('s_settle').value=c.settle_ms;$('s_pause').value=c.shot_pause_ms;$('s_after').value=c.after;$('s_retry').value=c.retries;$('s_ov').checked=c.overlay;$('s_ar').checked=c.archive;$('s_ard').value=c.archive_dir;$('s_ardel').checked=c.archive_delete;$('s_dv').checked=c.day_video;$('s_dfps').value=c.day_fps;$('s_dw').value=c.day_width;$('s_ptp').value=c.chdkptp;
+  const a=await api('/api/archive');$('s_arst').innerHTML=a.ok?`<span class="ok">✓ ${a.msg}, frei ${a.free_gb} von ${a.total_gb} GB</span>`:(c.archive_dir?`<span class="err">✗ ${esc(a.msg)}</span>`:'');
   const l=await api('/api/log');$('lerr').textContent=l.error.join('')||'–';$('lcap').textContent=l.capture.slice().reverse().join('')||'–';}
 $('saveset').onclick=async()=>{CFG=await api('/api/config',{title:$('s_title').value,interval_min:+$('s_int').value,light_start:+$('s_ls').value,light_end:+$('s_le').value,
-  settle_ms:+$('s_settle').value,shot_pause_ms:+$('s_pause').value,after:$('s_after').value,retries:+$('s_retry').value,overlay:$('s_ov').checked,day_video:$('s_dv').checked,day_fps:+$('s_dfps').value,day_width:+$('s_dw').value,chdkptp:$('s_ptp').value});
+  settle_ms:+$('s_settle').value,shot_pause_ms:+$('s_pause').value,after:$('s_after').value,retries:+$('s_retry').value,overlay:$('s_ov').checked,archive:$('s_ar').checked,archive_dir:$('s_ard').value,archive_delete:$('s_ardel').checked,day_video:$('s_dv').checked,day_fps:+$('s_dfps').value,day_width:+$('s_dw').value,chdkptp:$('s_ptp').value});
   showTitle();$('setmsg').textContent='✓ gespeichert';setTimeout(()=>$('setmsg').textContent='',3000);loadStatus();};
 
 $('clrlogs').onclick=async()=>{if(!confirm('Alle Logs löschen?'))return;

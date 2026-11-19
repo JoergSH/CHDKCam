@@ -15,21 +15,28 @@ IMG_RE = re.compile(r"^\d{8}_\d{6}\.jpg$")
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def collect(images_dir, pid, day_from=None, day_to=None):
-    base = os.path.join(images_dir, pid)
-    if not os.path.isdir(base):
-        return []
-    files = []
-    for day in sorted(os.listdir(base)):
-        if not DAY_RE.match(day):
+def collect(images_dirs, pid, day_from=None, day_to=None):
+    """Bilder einer Position im Zeitraum; images_dirs: ein Ordner oder Liste (lokal + Archiv).
+    Gleicher Dateiname in mehreren Ordnern zaehlt nur einmal."""
+    if isinstance(images_dirs, str):
+        images_dirs = [images_dirs]
+    found = {}
+    for images_dir in images_dirs:
+        base = os.path.join(images_dir, pid)
+        if not os.path.isdir(base):
             continue
-        if day_from and day < day_from:
-            continue
-        if day_to and day > day_to:
-            continue
-        d = os.path.join(base, day)
-        files += [os.path.join(d, f) for f in sorted(os.listdir(d)) if IMG_RE.match(f)]
-    return files
+        for day in os.listdir(base):
+            if not DAY_RE.match(day):
+                continue
+            if day_from and day < day_from:
+                continue
+            if day_to and day > day_to:
+                continue
+            d = os.path.join(base, day)
+            for f in os.listdir(d):
+                if IMG_RE.match(f) and f not in found:
+                    found[f] = os.path.join(d, f)
+    return [found[k] for k in sorted(found)]
 
 
 @functools.lru_cache(maxsize=8)
