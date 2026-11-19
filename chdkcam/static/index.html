@@ -93,7 +93,7 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
       <label>Belichtung s <input id="f_tv" placeholder="auto" style="width:80px"></label>
       <label>ISO <input type="number" id="f_iso" value="0" min="0" max="3200"></label>
       <label>Blitz <select id="f_flash"><option value="camera">wie Kamera</option><option value="off">aus</option><option value="auto">automatisch</option><option value="on">immer</option></select></label>
-      <label>Weißabgleich <select id="f_wb"><option value="camera">wie Kamera</option><option value="auto">automatisch</option><option value="day">Tageslicht</option><option value="cloudy">bewölkt</option><option value="tungsten">Kunstlicht</option><option value="fluor">Leuchtstoff</option><option value="fluor_h">Leuchtstoff H</option><option value="custom">manuell (an der Kamera gemessen)</option></select></label></div>
+      <label>Weißabgleich <select id="f_wb"></select></label></div>
     <div class="row"><label><input type="checkbox" id="f_dng"> zusätzlich RAW (DNG, ca. 19 MB)</label></div>
     <div class="row"><button class="b" id="flive">Sucherbild</button><button class="b p" id="fshoot">📷 Foto aufnehmen</button><span id="fmsg" class="dim"></span></div>
     <div class="prev" id="fimg"></div>
@@ -153,6 +153,8 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
     <div class="row"><label>chdkptp <input id="s_ptp" style="width:320px"></label></div>
     <div class="row"><button class="b p" id="saveset">Speichern</button><span id="setmsg" class="dim"></span></div>
   </div>
+  <div class="card"><h3>Eigene Weißabgleiche</h3><div id="wbplist" class="dim"></div>
+    <div class="dim">Anlegen unter „Positionen“: Probebild → auf weiße Fläche klicken → „Als eigenen Weißabgleich speichern“.</div></div>
   <div class="card"><h3>Aufräumen</h3>
     <div class="row"><button class="b" id="clrlogs">Logs löschen</button>
       <button class="b" id="clrimg" style="border-color:var(--err);color:var(--err)">Alle Bilder löschen</button>
@@ -232,7 +234,7 @@ function renderPositions(){
       <label>Belichtung s <input data-k="tv" value="${esc(p.tv)}" placeholder="auto" style="width:80px"></label>
       <label>ISO <input type="number" data-k="iso" value="${p.iso}" min="0" max="3200"></label>
       <label>Blitz <select data-k="flash">${[['camera','wie Kamera'],['off','aus'],['auto','automatisch'],['on','immer']].map(([v,t])=>`<option value="${v}" ${p.flash===v?'selected':''}>${t}</option>`).join('')}</select></label>
-      <label>Weißabgleich <select data-k="wb">${[['camera','wie Kamera'],['auto','automatisch'],['day','Tageslicht'],['cloudy','bewölkt'],['tungsten','Kunstlicht'],['fluor','Leuchtstoff'],['fluor_h','Leuchtstoff H'],['custom','manuell (an der Kamera gemessen)']].map(([v,t])=>`<option value="${v}" ${p.wb===v?'selected':''}>${t}</option>`).join('')}</select></label></div>
+      <label>Weißabgleich <select data-k="wb">${wbOptions(p.wb)}</select></label></div>
     <div class="row"><label>Bildgröße <select data-k="size">${[['camera','wie Kamera'],['L','L 4000×3000 (12 MP)'],['M1','M1 3264×2448 (8 MP)'],['M2','M2 2592×1944 (5 MP)'],['M3','M3 1600×1200 (2 MP)']].map(([v,t])=>`<option value="${v}" ${p.size===v?'selected':''}>${t}</option>`).join('')}</select></label>
       <label>Qualität <select data-k="quality">${[['camera','wie Kamera'],['superfine','superfein'],['fine','fein'],['normal','normal']].map(([v,t])=>`<option value="${v}" ${p.quality===v?'selected':''}>${t}</option>`).join('')}</select></label></div>
     <div class="row" data-gainrow></div>
@@ -262,10 +264,25 @@ function renderPositions(){
       const tf=msg.querySelector('[data-takef]'),tb=msg.querySelector('[data-take]');
       if(tf)tf.onclick=()=>{q('focus_mm').value=f.focus_mm;done('Fokus');};
       if(tb)tb.onclick=()=>{if(!fixF)q('focus_mm').value=f.focus_mm;if(f.tv&&!fixT)q('tv').value=f.tv;if(f.iso&&!fixI)q('iso').value=f.iso;done('Werte');};
-      wbTool(img,`${r.url}?t=${r.t}`,`${r.full}?t=${r.t}`,()=>{readPositions();return CFG.positions[i];},wb=>{q('wb').value=wb;},
+      wbTool(img,`${r.url}?t=${r.t}`,`${r.full}?t=${r.t}`,()=>{readPositions();return CFG.positions[i];},(wb,preset)=>{if(preset){document.querySelectorAll('#poslist [data-k="wb"]').forEach(sl=>{const v=sl.value;sl.innerHTML=wbOptions(v);});
+          CFG.positions[i].gain=[1,1,1];showGain(card,[1,1,1]);}q('wb').value=wb;},
         g=>{CFG.positions[i].gain=g;showGain(card,g);});};
   });
 }
+const WB_BASE=[['camera','wie Kamera'],['auto','automatisch'],['day','Tageslicht'],['cloudy','bewölkt'],['tungsten','Kunstlicht'],['fluor','Leuchtstoff'],['fluor_h','Leuchtstoff H'],['custom','manuell (an der Kamera gemessen)']];
+const wbLabel=v=>(WB_BASE.find(x=>x[0]===v)||[,v])[1];
+function wbOptions(sel){return WB_BASE.concat((CFG?.wb_presets||[]).map(p=>['p:'+p.id,'★ '+p.name]))
+  .map(([v,t])=>`<option value="${v}" ${sel===v?'selected':''}>${esc(t)}</option>`).join('');}
+async function savePreset(pos,rgb){
+  let base=pos.wb||'camera',old=pos.gain||[1,1,1];
+  if(base.startsWith('p:')){const pr=(CFG.wb_presets||[]).find(x=>'p:'+x.id===base);base=pr?pr.wb:'camera';old=pr?pr.gain:[1,1,1];}
+  const m=(rgb[0]+rgb[1]+rgb[2])/3,g=old.map((o,k)=>Math.round(Math.min(2,Math.max(0.5,o*m/Math.max(rgb[k],1)))*1000)/1000);
+  const name=prompt(`Name für den eigenen Weißabgleich\n(Basis: ${wbLabel(base)}, Korrektur R×${g[0]} G×${g[1]} B×${g[2]})`,'Growlicht');
+  if(!name)return null;
+  const id='wb'+Date.now().toString(36);
+  const r=await api('/api/config',{wb_presets:(CFG.wb_presets||[]).concat([{id,name,wb:base,gain:g}])});
+  CFG.wb_presets=r.wb_presets;return 'p:'+id;}
+
 // ---------- Farbmessung / Weißabgleich-Test
 function castText(rgb){const [r,g,b]=rgb.map(v=>Math.max(v,1)),m=(r+g+b)/3,dr=(r-m)/m,dg=(g-m)/m,db=(b-m)/m,t=0.03;
   const dev=Math.round(100*Math.max(Math.abs(dr),Math.abs(dg),Math.abs(db)));
@@ -292,7 +309,10 @@ function wbTool(box,url,full,getPos,applyWb,applyGain){
       <span>R ${rgb[0]} · G ${rgb[1]} · B ${rgb[2]}</span><span class="${ct.cls}"><b>${ct.txt}</b> (Abweichung ${ct.dev} %)</span>
       ${Math.max(...rgb)>=250?'<span class="warn">Fläche überbelichtet – Messung ungenau, lieber eine graue Stelle wählen</span>':''}
       <button class="b" data-wbt>Weißabgleich testen</button>
-      ${ct.dev>1&&applyGain&&Math.max(...rgb)<250?'<button class="b" data-cc>Farbe korrigieren</button>':''}`;
+      ${ct.dev>1&&applyGain&&Math.max(...rgb)<250?'<button class="b" data-cc>Farbe korrigieren</button> <button class="b" data-svp>Als eigenen Weißabgleich speichern</button>':''}`;
+    const svp=info.querySelector('[data-svp]');
+    if(svp)svp.onclick=async()=>{const v=await savePreset(getPos(),rgb);if(!v)return;applyWb(v,true);
+      info.insertAdjacentHTML('beforeend','<div class="ok" style="width:100%">Gespeichert und ausgewählt – auch bei anderen Positionen und unter „Foto“ wählbar. <b>Speichern</b> nicht vergessen.</div>');};
     const cc=info.querySelector('[data-cc]');
     if(cc)cc.onclick=()=>{const m=(rgb[0]+rgb[1]+rgb[2])/3,old=getPos().gain||[1,1,1];
       const g=old.map((o,k)=>Math.round(Math.min(2,Math.max(0.5,o*m/Math.max(rgb[k],1)))*1000)/1000);
@@ -328,7 +348,8 @@ $('camchk').onclick=async()=>{$('camst').textContent='frage Kamera …';const r=
     :`<span class="err">nicht verbunden</span> ${esc(r.error)}`;};
 
 // ---------- Foto
-function loadFoto(){const sel=$('fsrc'),keep=sel.value;
+function loadFoto(){const fw=$('f_wb'),kw=fw.value||'camera';fw.innerHTML=wbOptions(kw);
+  const sel=$('fsrc'),keep=sel.value;
   sel.innerHTML='<option value="">–</option>'+(CFG?.positions||[]).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');sel.value=keep;loadPhotos();}
 $('fsrc').onchange=()=>{const p=(CFG.positions||[]).find(x=>x.id===$('fsrc').value);if(!p)return;
   $('f_zoom').value=$('f_zoomn').value=p.zoom;$('f_focus').value=p.focus_mm;$('f_tv').value=p.tv;$('f_iso').value=p.iso;
@@ -412,6 +433,10 @@ async function pollJob(){const s=await api('/api/status'),j=s.job;
 // ---------- Einstellungen
 async function loadSet(){await loadCfg();const c=CFG;$('s_title').value=c.title;$('s_int').value=c.interval_min;$('s_ls').value=c.light_start;$('s_le').value=c.light_end;
   $('s_settle').value=c.settle_ms;$('s_pause').value=c.shot_pause_ms;$('s_after').value=c.after;$('s_retry').value=c.retries;$('s_ov').checked=c.overlay;$('s_ar').checked=c.archive;$('s_ard').value=c.archive_dir;$('s_ardel').checked=c.archive_delete;$('s_dv').checked=c.day_video;$('s_dfps').value=c.day_fps;$('s_dw').value=c.day_width;$('s_ptp').value=c.chdkptp;
+  $('wbplist').innerHTML=(c.wb_presets||[]).length?'<table>'+c.wb_presets.map(p=>`<tr><td>★ <b>${esc(p.name)}</b></td><td>Basis: ${esc(wbLabel(p.wb))}</td>
+    <td>R×${p.gain[0]} · G×${p.gain[1]} · B×${p.gain[2]}</td><td><button class="b" data-wbpdel="${p.id}">Löschen</button></td></tr>`).join('')+'</table>':'noch keine';
+  document.querySelectorAll('[data-wbpdel]').forEach(b=>b.onclick=async()=>{if(!confirm('Diesen Weißabgleich löschen? Positionen, die ihn nutzen, fallen auf „wie Kamera“ zurück.'))return;
+    CFG=await api('/api/config',{wb_presets:CFG.wb_presets.filter(x=>x.id!==b.dataset.wbpdel)});loadSet();});
   const a=await api('/api/archive');$('s_arst').innerHTML=a.ok?`<span class="ok">✓ ${a.msg}, frei ${a.free_gb} von ${a.total_gb} GB</span>`:(c.archive_dir?`<span class="err">✗ ${esc(a.msg)}</span>`:'');
   const l=await api('/api/log');$('lerr').textContent=l.error.join('')||'–';$('lcap').textContent=l.capture.slice().reverse().join('')||'–';}
 $('saveset').onclick=async()=>{CFG=await api('/api/config',{title:$('s_title').value,interval_min:+$('s_int').value,light_start:+$('s_ls').value,light_end:+$('s_le').value,

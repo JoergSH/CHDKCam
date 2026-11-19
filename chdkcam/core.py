@@ -60,6 +60,7 @@ DEFAULT_CFG = {
     "day_fps": 24,
     "day_width": 1920,
     "overlay": True,       # Datum/Uhrzeit im Video einblenden
+    "wb_presets": [],      # eigene Weissabgleiche: {id, name, wb (Kamera-Modus), gain [R,G,B]}
     "archive": False,      # nach dem Tagesvideo Bilder (und Video) auf ein Archiv-Laufwerk sichern
     "archive_dir": "",     # z. B. /mnt/sdkarte
     "archive_delete": False,  # lokale Originale nach erfolgreicher Sicherung loeschen
@@ -137,6 +138,20 @@ def _gain(g):
     return [1.0, 1.0, 1.0]
 
 
+def resolve(c, p):
+    """Eigenen Weissabgleich (wb = "p:<id>") in Kamera-Modus + Farbkorrektur aufloesen."""
+    wb = p.get("wb") or ""
+    if wb.startswith("p:"):
+        pr = next((x for x in c.get("wb_presets", []) if x["id"] == wb[2:]), None)
+        q = dict(p)
+        if pr:
+            q["wb"], q["gain"] = pr["wb"], pr["gain"]
+        else:
+            q["wb"] = "camera"
+        return q
+    return p
+
+
 def has_gain(p):
     return any(abs(v - 1.0) > 0.004 for v in p.get("gain") or [1, 1, 1])
 
@@ -163,7 +178,7 @@ def validate_position(p, idx):
     if fl not in FLASH_MODES:
         fl = "camera"
     wb = p.get("wb", "camera")
-    if wb not in WB_MODES:
+    if wb not in WB_MODES and not (isinstance(wb, str) and re.match(r"^p:[a-z0-9_-]{1,24}$", wb)):
         wb = "camera"
     tv = str(p.get("tv") or "").strip()
     if tv and not TV_RE.match(tv):
@@ -198,6 +213,19 @@ def validate_cfg(new):
     after = new.get("after", c["after"])
     c["after"] = after if after in ("stay", "home", "play") else "stay"
     c["retries"] = _clamp(new.get("retries", c["retries"]), 0, 3)
+    pr = new.get("wb_presets", c["wb_presets"])
+    out_pr, seen_pr = [], set()
+    for k, x in enumerate(pr if isinstance(pr, list) else []):
+        if not isinstance(x, dict):
+            continue
+        pid = re.sub(r"[^a-z0-9_-]", "", str(x.get("id") or "wb%d" % k).lower())[:24] or "wb%d" % k
+        if pid in seen_pr:
+            continue
+        seen_pr.add(pid)
+        out_pr.append({"id": pid, "name": str(x.get("name") or pid)[:30],
+                       "wb": x.get("wb") if x.get("wb") in WB_MODES else "camera",
+                       "gain": _gain(x.get("gain"))})
+    c["wb_presets"] = out_pr[:20]
     c["archive"] = bool(new.get("archive", c["archive"]))
     c["archive_dir"] = str(new.get("archive_dir", c["archive_dir"]) or "").strip()[:200]
     c["archive_delete"] = bool(new.get("archive_delete", c["archive_delete"]))
@@ -505,11 +533,11 @@ def capture(c=None, only=None, lock_timeout=120, ids=None):
     only: genau diese Position (auch wenn inaktiv); ids: Liste aktiver Positionen."""
     c = c or load_cfg()
     ensure_dirs()
-    positions = [p for p in c["positions"] if p["enabled"]]
+    positions = [resolve(c, p) for p in c["positions"] if p["enabled"]]
     if ids is not None:
         positions = [p for p in positions if p["id"] in ids]
     if only:
-        positions = [p for p in c["positions"] if p["id"] == only]
+        positions = [resolve(c, p) for p in c["positions"] if p["id"] == only]
     if not positions:
         return {"ok": False, "error": "keine Position aktiv"}
     now = datetime.datetime.now()
@@ -570,6 +598,7 @@ def preview(p, c=None):
     c = c or load_cfg()
     ensure_dirs()
     p = validate_position(p, 0)
+    p = resolve(c, p)
     base = os.path.join(PREVIEW, "preview")
     for f in os.listdir(PREVIEW):
         try:
@@ -628,6 +657,7 @@ def wb_test(p, rect, modes=None, c=None):
     c = c or load_cfg()
     ensure_dirs()
     base = validate_position(p, 0)
+    base["gain"] = [1.0, 1.0, 1.0]          # Test zeigt die reinen Kamera-Modi
     modes = [m for m in (modes or WB_MODES) if m in WB_MODES]
     tests = []
     for m in modes:
@@ -661,6 +691,7 @@ def photo(p, c=None):
     c = c or load_cfg()
     ensure_dirs()
     p = validate_position(dict(p, id="foto"), 0)
+    p = resolve(c, p)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     base = os.path.join(PHOTOS, stamp)
     with CamLock(timeout=60):
