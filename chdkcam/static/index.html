@@ -35,6 +35,10 @@ button.b:disabled{opacity:.5;cursor:wait}
 .pos{border-left:3px solid var(--acc)}
 .pos.off{border-left-color:var(--line);opacity:.75}
 .prev img{max-width:100%;border-radius:6px;margin-top:8px}
+.wbwrap{position:relative;display:inline-block;cursor:crosshair}
+.wbwrap img{display:block}
+.wbmark{position:absolute;border:2px solid #fff;outline:2px solid #000;pointer-events:none}
+.wbres td{padding:3px 8px}.wbres .sw{display:inline-block;width:38px;height:16px;border-radius:3px;border:1px solid var(--line);vertical-align:middle}
 table{border-collapse:collapse;width:100%}td,th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
 pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300px;overflow:auto}
 #lb{position:fixed;inset:0;background:#000e;display:none;align-items:center;justify-content:center;z-index:9;flex-direction:column}
@@ -256,8 +260,46 @@ function renderPositions(){
       const tf=msg.querySelector('[data-takef]'),tb=msg.querySelector('[data-take]');
       if(tf)tf.onclick=()=>{q('focus_mm').value=f.focus_mm;done('Fokus');};
       if(tb)tb.onclick=()=>{if(!fixF)q('focus_mm').value=f.focus_mm;if(f.tv&&!fixT)q('tv').value=f.tv;if(f.iso&&!fixI)q('iso').value=f.iso;done('Werte');};
-      img.innerHTML=`<a href="${r.full}?t=${r.t}" target="_blank"><img src="${r.url}?t=${r.t}"></a>`;};
+      wbTool(img,`${r.url}?t=${r.t}`,`${r.full}?t=${r.t}`,()=>{readPositions();return CFG.positions[i];},wb=>{q('wb').value=wb;});};
   });
+}
+// ---------- Farbmessung / Weißabgleich-Test
+function castText(rgb){const [r,g,b]=rgb.map(v=>Math.max(v,1)),m=(r+g+b)/3,dr=(r-m)/m,dg=(g-m)/m,db=(b-m)/m,t=0.03;
+  const dev=Math.round(100*Math.max(Math.abs(dr),Math.abs(dg),Math.abs(db)));
+  if(dev<=3)return{dev,txt:'neutral ✓',cls:'ok'};
+  let w;
+  if(dr>t&&db>t)w='rosa / magenta';else if(dr>t&&dg>t)w='gelblich';else if(dg>t&&db>t)w='türkis / cyan';
+  else if(dr>t)w=dg<-t?'rosa / rötlich':'rötlich / orange';else if(db>t)w='bläulich';else if(dg>t)w='grünlich';
+  else if(dr<-t)w='türkis / cyan';else if(db<-t)w='gelblich';else w='grünlich';
+  return{dev,txt:(dev<=8?'leicht ':'deutlich ')+w,cls:dev<=8?'warn':'err'};}
+function wbTool(box,url,full,getPos,applyWb){
+  box.innerHTML=`<div class="dim" style="margin-top:6px">Für die Farbmessung auf eine <b>weiße oder graue Fläche</b> im Bild klicken (z. B. die weiße Stange). <a href="${full}" target="_blank">Original öffnen</a></div>
+    <div class="wbwrap"><img src="${url}" crossorigin="anonymous"><div class="wbmark" style="display:none"></div></div>
+    <div class="row" data-wbinfo></div><div data-wbres></div>`;
+  const wrap=box.querySelector('.wbwrap'),im=wrap.querySelector('img'),mk=wrap.querySelector('.wbmark'),info=box.querySelector('[data-wbinfo]'),res=box.querySelector('[data-wbres]');
+  let rect=null;
+  im.onclick=e=>{const b=im.getBoundingClientRect(),x=(e.clientX-b.left)/b.width,y=(e.clientY-b.top)/b.height,s=0.03;
+    rect=[Math.max(0,x-s/2),Math.max(0,y-s*4/3/2),s,s*4/3];
+    Object.assign(mk.style,{display:'block',left:rect[0]*100+'%',top:rect[1]*100+'%',width:rect[2]*100+'%',height:rect[3]*100+'%'});
+    const c=document.createElement('canvas'),W=im.naturalWidth,H=im.naturalHeight;c.width=W;c.height=H;const g=c.getContext('2d');g.drawImage(im,0,0);
+    const d=g.getImageData(Math.round(rect[0]*W),Math.round(rect[1]*H),Math.max(1,Math.round(rect[2]*W)),Math.max(1,Math.round(rect[3]*H))).data;
+    let R=0,G=0,B=0,n=0;for(let k=0;k<d.length;k+=4){R+=d[k];G+=d[k+1];B+=d[k+2];n++;}
+    const rgb=[R/n,G/n,B/n].map(Math.round),ct=castText(rgb);
+    info.innerHTML=`<span class="sw" style="display:inline-block;width:38px;height:16px;border-radius:3px;background:rgb(${rgb})"></span>
+      <span>R ${rgb[0]} · G ${rgb[1]} · B ${rgb[2]}</span><span class="${ct.cls}"><b>${ct.txt}</b> (Abweichung ${ct.dev} %)</span>
+      ${Math.max(...rgb)>=250?'<span class="warn">Fläche überbelichtet – Messung ungenau, lieber eine graue Stelle wählen</span>':''}
+      <button class="b" data-wbt>Weißabgleich testen</button>`;
+    info.querySelector('[data-wbt]').onclick=async()=>{const bt=info.querySelector('[data-wbt]');bt.disabled=true;
+      res.innerHTML='<div class="dim">Nehme mit jedem Weißabgleich ein kleines Testbild auf … (ca. 1–2 min)</div>';
+      const r=await api('/api/wbtest',{position:getPos(),rect});bt.disabled=false;
+      if(!r.ok){res.innerHTML='<span class="err">✗ '+esc(r.error)+'</span>';return;}
+      res.innerHTML='<table class="wbres"><tr><th>Weißabgleich</th><th>Farbe</th><th>Ergebnis</th><th></th></tr>'+r.results.map((x,k)=>{const ct=castText(x.rgb);
+        return `<tr><td>${k===0?'⭐ ':''}<b>${esc(x.label)}</b></td><td><span class="sw" style="background:rgb(${x.rgb})"></span> <a href="${x.url}?t=${r.t}" target="_blank">Bild</a></td>
+        <td class="${ct.cls}">${ct.txt} (${x.score} %)${x.clipped?' <span class="warn">überbelichtet</span>':''}</td>
+        <td><button class="b" data-usewb="${x.wb}">übernehmen</button></td></tr>`;}).join('')+'</table>'
+        +'<div class="dim">„manuell“ zeigt den zuletzt an der Kamera gemessenen Wert. ⭐ = am neutralsten.</div>';
+      res.querySelectorAll('[data-usewb]').forEach(b=>b.onclick=()=>{applyWb(b.dataset.usewb);
+        res.insertAdjacentHTML('beforeend','<div class="ok">Weißabgleich eingetragen – <b>Speichern</b> nicht vergessen</div>');});};};
 }
 function readPositions(){
   document.querySelectorAll('#poslist .pos').forEach(card=>{

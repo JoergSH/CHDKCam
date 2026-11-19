@@ -562,6 +562,64 @@ def preview(p, c=None):
     return final, info
 
 
+WB_LABELS = {"auto": "automatisch", "day": "Tageslicht", "cloudy": "bewoelkt",
+             "tungsten": "Kunstlicht", "fluor": "Leuchtstoff", "fluor_h": "Leuchtstoff H",
+             "custom": "manuell (gemessen)"}
+
+
+def region_rgb(path, rect):
+    """Mittlere Farbe (R,G,B 0..255) eines Bildausschnitts; rect = (x, y, w, h) relativ 0..1."""
+    x, y, w, h = [max(0.0, min(1.0, float(v))) for v in rect]
+    w, h = max(w, 0.005), max(h, 0.005)
+    vf = "crop=iw*%f:ih*%f:iw*%f:ih*%f,scale=1:1:flags=area" % (w, h, x, y)
+    r = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", path, "-vf", vf,
+                        "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                       capture_output=True, timeout=30)
+    if len(r.stdout) < 3:
+        raise RuntimeError("Farbmessung fehlgeschlagen")
+    return list(r.stdout[:3])
+
+
+def wb_score(rgb):
+    """Abweichung von neutral in Prozent (0 = perfekt grau/weiss)."""
+    r, g, b = [max(v, 1) for v in rgb]
+    m = (r + g + b) / 3.0
+    return round(100 * max(abs(r - m), abs(g - m), abs(b - m)) / m, 1)
+
+
+def wb_test(p, rect, modes=None, c=None):
+    """Nimmt je Weissabgleich-Modus ein kleines Probebild auf und misst den neutralen Bereich."""
+    c = c or load_cfg()
+    ensure_dirs()
+    base = validate_position(p, 0)
+    modes = [m for m in (modes or WB_MODES) if m in WB_MODES]
+    tests = []
+    for m in modes:
+        t = dict(base, id="wb_" + m, wb=m, size="M3", quality="normal", dng=False)
+        tests.append(t)
+    with CamLock(timeout=60):
+        res, out = shoot_positions(dict(c, after="stay"), tests,
+                                   lambda t: os.path.join(PREVIEW, t["id"]),
+                                   timeout=60 + 25 * len(tests))
+    results = []
+    for t in tests:
+        path = res.get(t["id"])
+        if not path:
+            continue
+        final = os.path.join(PREVIEW, t["id"] + ".jpg")
+        if path != final:
+            os.replace(path, final)
+        rgb = region_rgb(final, rect)
+        results.append({"wb": t["wb"], "label": WB_LABELS[t["wb"]], "rgb": rgb,
+                        "score": wb_score(rgb), "url": "/preview/%s.jpg" % t["id"],
+                        "clipped": max(rgb) >= 250})
+    if not results:
+        errs = _errors(out)
+        raise RuntimeError("; ".join(errs[:3]) or "keine Testbilder erhalten")
+    results.sort(key=lambda r: r["score"])
+    return results
+
+
 def photo(p, c=None):
     """Einzelfoto mit den uebergebenen Einstellungen, gespeichert unter photos/ (optional + DNG)."""
     c = c or load_cfg()

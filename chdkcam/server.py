@@ -25,7 +25,7 @@ DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 IMG_RE = re.compile(r"^\d{8}_\d{6}\.jpg$")
 VID_RE = re.compile(r"^[\w.-]+\.mp4$")
 PHOTO_RE = re.compile(r"^\d{8}_\d{6}\.(jpg|dng)$")
-PREV_RE = re.compile(r"^(preview|preview_small|live)\.jpg$")
+PREV_RE = re.compile(r"^(preview|preview_small|live|wb_[a-z_]+)\.jpg$")
 
 job_lock = threading.Lock()
 job = {"state": "idle"}
@@ -360,6 +360,13 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/photo/delete":
             core.delete_photo(body.get("name"))
             return self.send_json({"ok": True})
+        if u.path == "/api/wbtest":
+            try:
+                rect = body.get("rect") or [0.45, 0.45, 0.1, 0.1]
+                r = core.wb_test(body.get("position") or {}, rect)
+                return self.send_json({"ok": True, "results": r, "t": time.time()})
+            except Exception as e:  # noqa: BLE001
+                return self.send_json({"ok": False, "error": str(e)})
         if u.path == "/api/live":
             try:
                 core.liveview(body.get("zoom"))
