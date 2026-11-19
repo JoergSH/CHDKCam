@@ -277,7 +277,8 @@ def _errors(out):
 def rs_args(p):
     a = ""
     if p.get("focus_mm"):
-        a += " -sd=%dmm" % p["focus_mm"]
+        # ohne -sdmode ignoriert die SX20 im P-Modus den Wert und nutzt den Autofokus
+        a += " -sd=%dmm -sdmode=MF" % p["focus_mm"]
     if p.get("tv"):
         a += " -tv=%s" % p["tv"]
     if p.get("iso"):
