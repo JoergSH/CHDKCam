@@ -233,6 +233,7 @@ function renderPositions(){
     <div class="row"><label>Fokus mm <input type="number" data-k="focus_mm" value="${p.focus_mm}" min="0"></label>
       <label>Belichtung s <input data-k="tv" value="${esc(p.tv)}" placeholder="auto" style="width:80px"></label>
       <label>ISO <input type="number" data-k="iso" value="${p.iso}" min="0" max="3200"></label>
+      <label title="Blendenzahl, z. B. 8 – größere Zahl = mehr Schärfentiefe, aber dunkler">Blende f/ <input type="number" data-k="av" value="${p.av||''}" placeholder="auto" min="0" max="16" step="0.1" style="width:70px"></label>
       <label>Blitz <select data-k="flash">${[['camera','wie Kamera'],['off','aus'],['auto','automatisch'],['on','immer']].map(([v,t])=>`<option value="${v}" ${p.flash===v?'selected':''}>${t}</option>`).join('')}</select></label>
       <label>Weißabgleich <select data-k="wb">${wbOptions(p.wb)}</select></label></div>
     <div class="row"><label>Bildgröße <select data-k="size">${[['camera','wie Kamera'],['L','L 4000×3000 (12 MP)'],['M1','M1 3264×2448 (8 MP)'],['M2','M2 2592×1944 (5 MP)'],['M3','M3 1600×1200 (2 MP)']].map(([v,t])=>`<option value="${v}" ${p.size===v?'selected':''}>${t}</option>`).join('')}</select></label>
@@ -338,7 +339,7 @@ function readPositions(){
   document.querySelectorAll('#poslist .pos').forEach(card=>{
     const p=CFG.positions[+card.dataset.i],q=k=>card.querySelector(`[data-k="${k}"]`);
     p.name=q('name').value;p.id=q('id').value;p.enabled=q('enabled').checked;p.zoom=+q('zoomn').value;
-    p.focus_mm=+q('focus_mm').value||0;p.tv=q('tv').value.trim();p.iso=+q('iso').value||0;p.flash=q('flash').value;p.wb=q('wb').value;p.interval_min=+q('interval_min').value||0;p.size=q('size').value;p.quality=q('quality').value;});
+    p.focus_mm=+q('focus_mm').value||0;p.tv=q('tv').value.trim();p.iso=+q('iso').value||0;p.flash=q('flash').value;p.wb=q('wb').value;p.av=+q('av').value||0;p.interval_min=+q('interval_min').value||0;p.size=q('size').value;p.quality=q('quality').value;});
 }
 $('addpos').onclick=()=>{readPositions();const n=CFG.positions.length+1;
   CFG.positions.push({id:'pos'+n,name:'Position '+n,zoom:30,focus_mm:0,tv:'',iso:0,flash:'camera',wb:'camera',size:'camera',quality:'camera',interval_min:0,enabled:true});renderPositions();};

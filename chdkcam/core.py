@@ -190,6 +190,7 @@ def validate_position(p, idx):
         "focus_mm": _clamp(p.get("focus_mm", 0), 0, 100000),
         "tv": tv,
         "iso": _clamp(p.get("iso", 0), 0, 3200),
+        "av": round(_clamp(p.get("av", 0) or 0, 0, 16, float), 1),
         "flash": fl,
         "wb": wb,
         "size": p.get("size") if p.get("size") in SIZES else "camera",
@@ -366,6 +367,8 @@ def rs_args(p):
         a += " -tv=%s" % p["tv"]
     if p.get("iso"):
         a += " -svm=%d" % p["iso"]
+    if p.get("av"):
+        a += " -av=%g" % p["av"]
     if p.get("dng"):
         a += " -jpg -dng"
     return a
