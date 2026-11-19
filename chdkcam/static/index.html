@@ -389,7 +389,7 @@ async function loadPhotos(){const ph=await api('/api/photos');
 let GAL=[],GPOS='',GDAY='';
 function posOptions(sel){sel.innerHTML=(CFG?.positions||[]).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');}
 async function loadGalPos(){posOptions($('gpos'));await loadDays();}
-let RCRECT=null;
+let RCRECT=null,GALV=0,RCLAST=0;
 function loadRecolor(days){const o=days.slice().reverse().map(x=>`<option value="${x.day}">${dayLabel(x.day)} (${x.count})</option>`).join('');
   $('rcfrom').innerHTML=o;$('rcto').innerHTML=o;if(days.length){$('rcfrom').value=days[days.length-1].day;$('rcto').value=days[0].day;}
   RCRECT=null;$('rcmark').style.display='none';$('rcgo').disabled=true;$('rcinfo').textContent='noch keine Stelle gewählt';
@@ -403,18 +403,20 @@ $('rcgo').onclick=async()=>{if(!confirm('Die Bilder im gewählten Zeitraum werde
   if(!r.ok){$('rcjob').textContent='✗ '+r.error;return;}pollRecolor();};
 async function pollRecolor(){const j=(await api('/api/status')).job;if(j.kind!=='recolor')return;const st=j.stats||{};
   const txt=`${st.fixed||0} korrigiert · ${st.ok||0} schon neutral · ${st.skipped||0} übersprungen`;
-  if(j.state==='running'){$('rcjob').textContent=`Bearbeite ${j.frame}/${j.total} … ${txt}`;$('rcbar').style.width=(j.total?100*j.frame/j.total:0)+'%';setTimeout(pollRecolor,1500);}
-  else if(j.state==='done'){$('rcjob').innerHTML='<span class="ok">✓ fertig:</span> '+txt+' – vorhandene Tagesvideos ggf. löschen und neu erstellen';$('rcbar').style.width='100%';loadThumbs();}
+  if(j.state==='running'){$('rcjob').textContent=`Bearbeite ${j.frame}/${j.total} … ${txt}`;$('rcbar').style.width=(j.total?100*j.frame/j.total:0)+'%';
+    if(Date.now()-RCLAST>10000){RCLAST=Date.now();GALV=Date.now();loadThumbs();}   // Galerie zwischendurch auffrischen
+    setTimeout(pollRecolor,1500);}
+  else if(j.state==='done'){$('rcjob').innerHTML='<span class="ok">✓ fertig:</span> '+txt+' – vorhandene Tagesvideos ggf. löschen und neu erstellen';$('rcbar').style.width='100%';GALV=Date.now();loadThumbs();}
   else $('rcjob').innerHTML='<span class="err">✗ '+esc(j.error)+'</span>';}
 async function loadDays(){GPOS=$('gpos').value;const d=await api('/api/days?pos='+GPOS);loadRecolor(d);
   $('gday').innerHTML=d.map(x=>`<option value="${x.day}">${x.day} (${x.count})</option>`).join('');loadThumbs();}
 async function loadThumbs(){GDAY=$('gday').value;if(!GDAY){$('gthumbs').innerHTML='<div class="dim">keine Bilder</div>';$('gcount').textContent='';return;}
   GAL=await api(`/api/images?pos=${GPOS}&day=${GDAY}`);$('gcount').textContent=GAL.length+' Bilder';
-  $('gthumbs').innerHTML=GAL.map((f,i)=>`<a href="#" data-i="${i}"><img loading="lazy" src="/thumb/${GPOS}/${GDAY}/${f}"><span>${f.slice(9,11)}:${f.slice(11,13)}</span></a>`).join('');
+  $('gthumbs').innerHTML=GAL.map((f,i)=>`<a href="#" data-i="${i}"><img loading="lazy" src="/thumb/${GPOS}/${GDAY}/${f}?v=${GALV}"><span>${f.slice(9,11)}:${f.slice(11,13)}</span></a>`).join('');
   document.querySelectorAll('#gthumbs a').forEach(a=>a.onclick=e=>{e.preventDefault();lb(+a.dataset.i);});}
 $('gpos').onchange=loadDays;$('gday').onchange=loadThumbs;
 let LBI=0;
-function lb(i){LBI=(i+GAL.length)%GAL.length;const f=GAL[LBI],u=`/img/${GPOS}/${GDAY}/${f}`;
+function lb(i){LBI=(i+GAL.length)%GAL.length;const f=GAL[LBI],u=`/img/${GPOS}/${GDAY}/${f}?v=${GALV}`;
   $('lbimg').src=u;$('lbfull').href=u;$('lbtxt').textContent=`${GDAY} ${f.slice(9,11)}:${f.slice(11,13)} (${LBI+1}/${GAL.length})`;$('lb').style.display='flex';}
 $('lbclose').onclick=()=>$('lb').style.display='none';$('lbprev').onclick=()=>lb(LBI-1);$('lbnext').onclick=()=>lb(LBI+1);
 document.addEventListener('keydown',e=>{if($('lb').style.display!=='flex')return;
