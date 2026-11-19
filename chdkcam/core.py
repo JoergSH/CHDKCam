@@ -156,12 +156,28 @@ def has_gain(p):
     return any(abs(v - 1.0) > 0.004 for v in p.get("gain") or [1, 1, 1])
 
 
-def apply_gain(path, gain):
-    """Farbkorrektur direkt ins JPEG rechnen (hohe Qualitaet)."""
+def gain_curves(gain, ref=None):
+    """Farbkurven fuer ffmpeg: Mitten werden um den Faktor korrigiert, Weiss bleibt Weiss
+    (sonst werden ausgebrannte Lampen/Reflexe gelb oder rosa).
+    ref: gemessene Referenzfarbe (R,G,B) - dann wird genau diese Farbe neutral."""
+    parts = []
+    m = sum(ref) / 3.0 if ref else None
+    for k, (ch, g) in enumerate(zip("rgb", gain)):
+        if ref:
+            x = min(max(ref[k] / 255.0, 0.05), 0.95)
+            y = min(max(m / 255.0, 0.02), 0.98)
+        else:
+            x, y = 0.75, min(max(0.75 * g, 0.02), 0.97)
+        pts = [(0.0, 0.0), (x / 2, y / 2), (x, y), (1.0, 1.0)]
+        parts.append("%s='%s'" % (ch, " ".join("%.4f/%.4f" % pt for pt in pts)))
+    return "curves=" + ":".join(parts)
+
+
+def apply_gain(path, gain, ref=None):
+    """Farbkorrektur direkt ins JPEG rechnen (hohe Qualitaet, Lichter bleiben neutral)."""
     tmp = path + ".cc.jpg"
-    r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", path, "-vf",
-                        "colorchannelmixer=rr=%.3f:gg=%.3f:bb=%.3f" % tuple(gain),
-                        "-q:v", "2", tmp], capture_output=True, timeout=60)
+    r = subprocess.run(["ffmpeg", "-nostdin", "-y", "-loglevel", "error", "-i", path, "-vf",
+                        gain_curves(gain, ref), "-q:v", "2", tmp], capture_output=True, timeout=60)
     if r.returncode == 0 and os.path.isfile(tmp) and os.path.getsize(tmp) > 1000:
         os.replace(tmp, path)
         return True
@@ -738,7 +754,7 @@ def recolor(pid, day_from, day_to, rect, backup=False, on_progress=None, c=None)
             b = os.path.join(bdir, os.path.basename(f))
             if not os.path.exists(b):
                 shutil.copyfile(f, b)
-        if apply_gain(f, gain):
+        if apply_gain(f, gain, ref=rgb):
             stats["fixed"] += 1
             day = os.path.basename(os.path.dirname(f))
             make_thumb(f, os.path.join(THUMBS, pid, day, os.path.basename(f)))
