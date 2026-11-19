@@ -118,6 +118,11 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
     <div class="row"><label>chdkptp <input id="s_ptp" style="width:320px"></label></div>
     <div class="row"><button class="b p" id="saveset">Speichern</button><span id="setmsg" class="dim"></span></div>
   </div>
+  <div class="card"><h3>Aufräumen</h3>
+    <div class="row"><button class="b" id="clrlogs">Logs löschen</button>
+      <button class="b" id="clrimg" style="border-color:var(--err);color:var(--err)">Alle Bilder löschen</button>
+      <span id="clrmsg" class="dim"></span></div>
+    <div class="dim">„Alle Bilder löschen“ entfernt sämtliche Aufnahmen aller Positionen. Videos und Einstellungen bleiben erhalten.</div></div>
   <div class="card"><h3>Fehler</h3><pre id="lerr"></pre></div>
   <div class="card"><h3>Aufnahmen</h3><pre id="lcap"></pre></div>
 </section>
@@ -269,6 +274,13 @@ $('saveset').onclick=async()=>{CFG=await api('/api/config',{title:$('s_title').v
   settle_ms:+$('s_settle').value,shot_pause_ms:+$('s_pause').value,after:$('s_after').value,retries:+$('s_retry').value,chdkptp:$('s_ptp').value});
   showTitle();$('setmsg').textContent='✓ gespeichert';setTimeout(()=>$('setmsg').textContent='',3000);loadStatus();};
 
+$('clrlogs').onclick=async()=>{if(!confirm('Alle Logs löschen?'))return;
+  const r=await api('/api/clear',{what:'logs'});$('clrmsg').textContent=r.ok?'✓ Logs gelöscht':'✗ '+r.error;loadSet();};
+$('clrimg').onclick=async()=>{const n=(STATUS?.positions||[]).reduce((a,p)=>a+p.images,0);
+  if(!confirm(`Wirklich ALLE ${n} Bilder löschen? Das lässt sich nicht rückgängig machen.`))return;
+  if(prompt('Zur Bestätigung LÖSCHEN eintippen:')!=='LÖSCHEN'){$('clrmsg').textContent='abgebrochen';return;}
+  $('clrmsg').textContent='lösche …';const r=await api('/api/clear',{what:'images'});
+  $('clrmsg').textContent=r.ok?'✓ alle Bilder gelöscht':'✗ '+r.error;loadStatus();};
 (async()=>{await loadCfg();await loadStatus();setInterval(()=>{if($('home').classList.contains('on'))loadStatus();},30000);})();
 </script>
 </body>

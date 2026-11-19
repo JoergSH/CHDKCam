@@ -315,6 +315,20 @@ class Handler(BaseHTTPRequestHandler):
             width = core._clamp(body.get("width", 1920), 320, 4000)
             ok = start_job(run_render, pid, d1, d2, fps, width)
             return self.send_json({"ok": ok, "error": None if ok else "laeuft bereits"})
+        if u.path == "/api/clear":
+            what = body.get("what")
+            try:
+                if what == "logs":
+                    core.clear_logs()
+                elif what == "images":
+                    if job_snapshot().get("state") == "running":
+                        return self.send_json({"ok": False, "error": "es laeuft gerade ein Auftrag"})
+                    core.clear_images()
+                else:
+                    return self.send_json({"ok": False, "error": "unbekannt"}, 400)
+            except Exception as e:  # noqa: BLE001
+                return self.send_json({"ok": False, "error": str(e)})
+            return self.send_json({"ok": True})
         if u.path == "/api/video/delete":
             name = body.get("name", "")
             if VID_RE.match(name):

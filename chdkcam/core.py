@@ -541,6 +541,27 @@ def liveview(zoom=None, c=None):
     return jpg
 
 
+# ------------------------------------------------------------ Aufraeumen
+def clear_logs():
+    for f in (ERR_LOG, CAP_LOG):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+
+
+def clear_images():
+    """Loescht alle Bilder, Miniaturen und Vorschauen (Videos und Einstellungen bleiben)."""
+    with CamLock(timeout=120):
+        for d in (IMAGES, THUMBS, LATEST, PREVIEW):
+            shutil.rmtree(d, ignore_errors=True)
+        ensure_dirs()
+        st = read_json(STATUS_FILE, {})
+        st.pop("last", None)
+        st.pop("last_ok", None)
+        write_json_atomic(STATUS_FILE, st)
+
+
 # ------------------------------------------------------------ Kommandozeile
 def main(argv):
     if len(argv) < 2 or argv[1] not in ("capture", "camera", "info"):
