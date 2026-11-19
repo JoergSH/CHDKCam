@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import core  # noqa: E402
 import render  # noqa: E402
+import daily  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
@@ -147,6 +148,16 @@ def run_render(pid, day_from, day_to, fps, width):
         set_job(state="done", kind="render", name=name)
     except Exception as e:  # noqa: BLE001
         core.log_error("Video: %s" % e)
+        set_job(state="error", kind="render", error=str(e))
+
+
+def run_daily():
+    set_job(state="running", kind="render", name="Tagesvideos", frame=0, total=0)
+    try:
+        n = daily.run(force=True)
+        set_job(state="done", kind="render", name="%d Tagesvideo(s)" % n)
+    except Exception as e:  # noqa: BLE001
+        core.log_error("Tagesvideos: %s" % e)
         set_job(state="error", kind="render", error=str(e))
 
 
@@ -314,6 +325,9 @@ class Handler(BaseHTTPRequestHandler):
             fps = core._clamp(body.get("fps", 24), 1, 60)
             width = core._clamp(body.get("width", 1920), 320, 4000)
             ok = start_job(run_render, pid, d1, d2, fps, width)
+            return self.send_json({"ok": ok, "error": None if ok else "laeuft bereits"})
+        if u.path == "/api/daily":
+            ok = start_job(run_daily)
             return self.send_json({"ok": ok, "error": None if ok else "laeuft bereits"})
         if u.path == "/api/clear":
             what = body.get("what")

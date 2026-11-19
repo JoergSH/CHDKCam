@@ -147,10 +147,10 @@ $SUDO pkill -f gvfsd-gphoto2 2>/dev/null || true
 
 $SUDO systemctl daemon-reload
 if [ "$START" = 1 ]; then
-  $SUDO systemctl enable --now chdkcam-web.service chdkcam-capture.timer
+  $SUDO systemctl enable --now chdkcam-web.service chdkcam-capture.timer chdkcam-daily.timer
   $SUDO systemctl restart chdkcam-web.service
 else
-  $SUDO systemctl enable chdkcam-web.service chdkcam-capture.timer
+  $SUDO systemctl enable chdkcam-web.service chdkcam-capture.timer chdkcam-daily.timer
 fi
 
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')

@@ -1,0 +1,10 @@
+[Unit]
+Description=CHDKCam: stuendlich pruefen, ob Tagesvideos erstellt werden koennen
+
+[Timer]
+OnCalendar=*-*-* *:20:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

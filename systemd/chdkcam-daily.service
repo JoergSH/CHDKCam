@@ -1,0 +1,11 @@
+[Unit]
+Description=CHDKCam Tagesvideos (laeuft nur bei Licht aus)
+
+[Service]
+Type=oneshot
+User=@USER@
+EnvironmentFile=@ENVFILE@
+ExecStart=/usr/bin/python3 @APPDIR@/daily.py
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=6h
