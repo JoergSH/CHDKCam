@@ -179,6 +179,20 @@ def run_concat(pid, d1, d2):
         set_job(state="error", kind="render", error=str(e))
 
 
+def run_recolor(pid, d1, d2, rect, backup):
+    set_job(state="running", kind="recolor", frame=0, total=0)
+
+    def prog(k, n, st):
+        set_job(state="running", kind="recolor", frame=k, total=n, stats=dict(st))
+
+    try:
+        st = core.recolor(pid, d1, d2, rect, backup, prog)
+        set_job(state="done", kind="recolor", stats=st)
+    except Exception as e:  # noqa: BLE001
+        core.log_error("Farbkorrektur: %s" % e)
+        set_job(state="error", kind="recolor", error=str(e))
+
+
 def run_daily():
     set_job(state="running", kind="render", name="Tagesvideos", frame=0, total=0)
     try:
@@ -391,6 +405,15 @@ class Handler(BaseHTTPRequestHandler):
             if not self.valid_pid(pid) or (d1 and not DAY_RE.match(d1)) or (d2 and not DAY_RE.match(d2)):
                 return self.send_json({"ok": False, "error": "ungueltige Angaben"}, 400)
             ok = start_job(run_concat, pid, d1, d2)
+            return self.send_json({"ok": ok, "error": None if ok else "laeuft bereits"})
+        if u.path == "/api/recolor":
+            pid = body.get("pos", "")
+            d1, d2 = body.get("from") or None, body.get("to") or None
+            rect = body.get("rect")
+            if not self.valid_pid(pid) or not isinstance(rect, list) or len(rect) != 4 \
+                    or (d1 and not DAY_RE.match(d1)) or (d2 and not DAY_RE.match(d2)):
+                return self.send_json({"ok": False, "error": "ungueltige Angaben"}, 400)
+            ok = start_job(run_recolor, pid, d1, d2, rect, bool(body.get("backup")))
             return self.send_json({"ok": ok, "error": None if ok else "laeuft bereits"})
         if u.path == "/api/daily":
             ok = start_job(run_daily)

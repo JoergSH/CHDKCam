@@ -689,6 +689,52 @@ def wb_test(p, rect, modes=None, c=None):
     return results
 
 
+def recolor(pid, day_from, day_to, rect, backup=False, on_progress=None, c=None):
+    """Gespeicherte Bilder nachtraeglich farbneutral machen: In jedem Bild wird die
+    Referenzflaeche (z. B. weisse Stange) gemessen und das Bild so korrigiert, dass sie grau wird.
+    Bilder, deren Referenz verdeckt/ueberbelichtet aussieht, werden uebersprungen."""
+    import render
+    c = c or load_cfg()
+    files = render.collect(image_dirs(c), pid, day_from, day_to)
+    stats = {"total": len(files), "fixed": 0, "ok": 0, "skipped": 0}
+    for k, f in enumerate(files):
+        if on_progress:
+            on_progress(k, len(files), stats)
+        try:
+            rgb = region_rgb(f, rect)
+        except Exception:  # noqa: BLE001
+            stats["skipped"] += 1
+            continue
+        if max(rgb) >= 250 or min(rgb) < 40:
+            stats["skipped"] += 1              # ueberbelichtet oder zu dunkel
+            continue
+        if wb_score(rgb) <= 1.5:
+            stats["ok"] += 1
+            continue
+        m = sum(rgb) / 3.0
+        gain = [m / max(v, 1) for v in rgb]
+        if max(abs(g - 1) for g in gain) > 0.3:
+            stats["skipped"] += 1              # Referenz vermutlich verdeckt (Blatt davor)
+            continue
+        if backup:
+            bdir = os.path.join(DATA, "originals", pid, os.path.basename(os.path.dirname(f)))
+            os.makedirs(bdir, exist_ok=True)
+            b = os.path.join(bdir, os.path.basename(f))
+            if not os.path.exists(b):
+                shutil.copyfile(f, b)
+        if apply_gain(f, gain):
+            stats["fixed"] += 1
+            day = os.path.basename(os.path.dirname(f))
+            make_thumb(f, os.path.join(THUMBS, pid, day, os.path.basename(f)))
+        else:
+            stats["skipped"] += 1
+    if on_progress:
+        on_progress(len(files), len(files), stats)
+    log(CAP_LOG, "Farbkorrektur %s %s..%s: %d korrigiert, %d schon neutral, %d uebersprungen" % (
+        pid, day_from or "-", day_to or "-", stats["fixed"], stats["ok"], stats["skipped"]))
+    return stats
+
+
 def photo(p, c=None):
     """Einzelfoto mit den uebergebenen Einstellungen, gespeichert unter photos/ (optional + DNG)."""
     c = c or load_cfg()

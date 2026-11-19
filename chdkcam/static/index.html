@@ -108,6 +108,15 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
     <span id="gcount" class="dim"></span>
   </div>
   <div class="thumbs" id="gthumbs"></div>
+  <div class="card" style="margin-top:14px"><h3>Farben nachträglich korrigieren</h3>
+    <div class="dim">Für die gewählte Position: im Beispielbild auf eine <b>weiße Fläche</b> klicken, die in allen Bildern sichtbar ist (z. B. die weiße Stange).
+      Jedes Bild wird dann einzeln so korrigiert, dass diese Stelle neutral wird. Bilder, in denen sie verdeckt oder überbelichtet ist, bleiben unverändert.</div>
+    <div class="row"><label>von Tag <select id="rcfrom"></select></label><label>bis Tag <select id="rcto"></select></label>
+      <label><input type="checkbox" id="rcbak"> Originale vorher sichern</label></div>
+    <div class="wbwrap" id="rcwrap" style="max-width:640px"><img id="rcimg" style="max-width:640px;width:100%"><div class="wbmark" id="rcmark" style="display:none"></div></div>
+    <div class="row"><span id="rcinfo" class="dim">noch keine Stelle gewählt</span><button class="b p" id="rcgo" disabled>Korrigieren</button></div>
+    <div id="rcjob" class="dim"></div><div class="bar"><div id="rcbar"></div></div>
+  </div>
 </section>
 
 <section id="vid">
@@ -379,7 +388,24 @@ async function loadPhotos(){const ph=await api('/api/photos');
 let GAL=[],GPOS='',GDAY='';
 function posOptions(sel){sel.innerHTML=(CFG?.positions||[]).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');}
 async function loadGalPos(){posOptions($('gpos'));await loadDays();}
-async function loadDays(){GPOS=$('gpos').value;const d=await api('/api/days?pos='+GPOS);
+let RCRECT=null;
+function loadRecolor(days){const o=days.slice().reverse().map(x=>`<option value="${x.day}">${dayLabel(x.day)} (${x.count})</option>`).join('');
+  $('rcfrom').innerHTML=o;$('rcto').innerHTML=o;if(days.length){$('rcfrom').value=days[days.length-1].day;$('rcto').value=days[0].day;}
+  RCRECT=null;$('rcmark').style.display='none';$('rcgo').disabled=true;$('rcinfo').textContent='noch keine Stelle gewählt';
+  $('rcimg').src='/latest/'+GPOS+'.jpg?t='+Date.now();}
+$('rcimg').onclick=e=>{const im=$('rcimg'),b=im.getBoundingClientRect(),x=(e.clientX-b.left)/b.width,y=(e.clientY-b.top)/b.height,sz=0.02;
+  RCRECT=[Math.max(0,x-sz/2),Math.max(0,y-sz*2/3),sz,sz*4/3];
+  Object.assign($('rcmark').style,{display:'block',left:RCRECT[0]*100+'%',top:RCRECT[1]*100+'%',width:RCRECT[2]*100+'%',height:RCRECT[3]*100+'%'});
+  $('rcinfo').textContent='Referenzstelle gewählt';$('rcgo').disabled=false;};
+$('rcgo').onclick=async()=>{if(!confirm('Die Bilder im gewählten Zeitraum werden dauerhaft verändert'+($('rcbak').checked?' (Originale werden gesichert)':'')+'. Fortfahren?'))return;
+  const r=await api('/api/recolor',{pos:GPOS,from:$('rcfrom').value,to:$('rcto').value,rect:RCRECT,backup:$('rcbak').checked});
+  if(!r.ok){$('rcjob').textContent='✗ '+r.error;return;}pollRecolor();};
+async function pollRecolor(){const j=(await api('/api/status')).job;if(j.kind!=='recolor')return;const st=j.stats||{};
+  const txt=`${st.fixed||0} korrigiert · ${st.ok||0} schon neutral · ${st.skipped||0} übersprungen`;
+  if(j.state==='running'){$('rcjob').textContent=`Bearbeite ${j.frame}/${j.total} … ${txt}`;$('rcbar').style.width=(j.total?100*j.frame/j.total:0)+'%';setTimeout(pollRecolor,1500);}
+  else if(j.state==='done'){$('rcjob').innerHTML='<span class="ok">✓ fertig:</span> '+txt+' – vorhandene Tagesvideos ggf. löschen und neu erstellen';$('rcbar').style.width='100%';loadThumbs();}
+  else $('rcjob').innerHTML='<span class="err">✗ '+esc(j.error)+'</span>';}
+async function loadDays(){GPOS=$('gpos').value;const d=await api('/api/days?pos='+GPOS);loadRecolor(d);
   $('gday').innerHTML=d.map(x=>`<option value="${x.day}">${x.day} (${x.count})</option>`).join('');loadThumbs();}
 async function loadThumbs(){GDAY=$('gday').value;if(!GDAY){$('gthumbs').innerHTML='<div class="dim">keine Bilder</div>';$('gcount').textContent='';return;}
   GAL=await api(`/api/images?pos=${GPOS}&day=${GDAY}`);$('gcount').textContent=GAL.length+' Bilder';
