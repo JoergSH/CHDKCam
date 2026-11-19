@@ -635,17 +635,34 @@ WB_LABELS = {"auto": "automatisch", "day": "Tageslicht", "cloudy": "bewoelkt",
              "custom": "manuell (gemessen)"}
 
 
-def region_rgb(path, rect):
-    """Mittlere Farbe (R,G,B 0..255) eines Bildausschnitts; rect = (x, y, w, h) relativ 0..1."""
+def region_pixels(path, rect, max_side=80):
+    """Pixel (R,G,B) eines Bildausschnitts; rect = (x, y, w, h) relativ 0..1."""
     x, y, w, h = [max(0.0, min(1.0, float(v))) for v in rect]
     w, h = max(w, 0.005), max(h, 0.005)
-    vf = "crop=iw*%f:ih*%f:iw*%f:ih*%f,scale=1:1:flags=area" % (w, h, x, y)
-    r = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", path, "-vf", vf,
+    vf = ("crop=iw*%f:ih*%f:iw*%f:ih*%f,scale='min(iw,%d)':'min(ih,%d)':flags=area"
+          % (w, h, x, y, max_side, max_side))
+    r = subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-i", path, "-vf", vf,
                         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
                        capture_output=True, timeout=30)
-    if len(r.stdout) < 3:
+    d = r.stdout
+    if len(d) < 3:
         raise RuntimeError("Farbmessung fehlgeschlagen")
-    return list(r.stdout[:3])
+    return [(d[i], d[i + 1], d[i + 2]) for i in range(0, len(d) - 2, 3)]
+
+
+def region_rgb(path, rect, valid_only=False):
+    """Mittlere Farbe eines Ausschnitts. valid_only: ueberbelichtete/zu dunkle Pixel weglassen;
+    gibt dann None zurueck, wenn zu wenige brauchbare Pixel uebrig bleiben."""
+    px = region_pixels(path, rect)
+    if valid_only:
+        good = [p for p in px if max(p) < 248 and min(p) > 30]
+        if len(good) < max(4, len(px) // 10):
+            return None
+        # nur die hellsten brauchbaren Pixel: die weisse/graue Flaeche, nicht der Hintergrund
+        good.sort(key=sum, reverse=True)
+        px = good[:max(4, len(good) * 2 // 5)]
+    n = float(len(px))
+    return [int(round(sum(p[k] for p in px) / n)) for k in range(3)]
 
 
 def wb_score(rgb):
@@ -701,12 +718,11 @@ def recolor(pid, day_from, day_to, rect, backup=False, on_progress=None, c=None)
         if on_progress:
             on_progress(k, len(files), stats)
         try:
-            rgb = region_rgb(f, rect)
+            rgb = region_rgb(f, rect, valid_only=True)
         except Exception:  # noqa: BLE001
-            stats["skipped"] += 1
-            continue
-        if max(rgb) >= 250 or min(rgb) < 40:
-            stats["skipped"] += 1              # ueberbelichtet oder zu dunkel
+            rgb = None
+        if rgb is None:
+            stats["skipped"] += 1              # Stelle ueberbelichtet oder zu dunkel
             continue
         if wb_score(rgb) <= 1.5:
             stats["ok"] += 1
