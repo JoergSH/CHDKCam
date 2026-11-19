@@ -151,6 +151,32 @@ def run_render(pid, day_from, day_to, fps, width):
         set_job(state="error", kind="render", error=str(e))
 
 
+DAILY_RE = re.compile(r"^tag_([a-z0-9_-]+)_(\d{4}-\d{2}-\d{2})\.mp4$")
+
+
+def daily_videos(pid):
+    out = []
+    if os.path.isdir(core.VIDEOS):
+        for f in sorted(os.listdir(core.VIDEOS)):
+            m = DAILY_RE.match(f)
+            if m and m.group(1) == pid:
+                out.append({"day": m.group(2), "name": f})
+    return out
+
+
+def run_concat(pid, d1, d2):
+    vids = [os.path.join(core.VIDEOS, v["name"]) for v in daily_videos(pid)
+            if (not d1 or v["day"] >= d1) and (not d2 or v["day"] <= d2)]
+    name = "%s_tage_%s_bis_%s.mp4" % (pid, d1 or "anfang", d2 or "heute")
+    set_job(state="running", kind="render", name=name, frame=0, total=len(vids), phase="concat")
+    try:
+        render.concat(vids, os.path.join(core.VIDEOS, name))
+        set_job(state="done", kind="render", name=name)
+    except Exception as e:  # noqa: BLE001
+        core.log_error("Zusammenfuegen: %s" % e)
+        set_job(state="error", kind="render", error=str(e))
+
+
 def run_daily():
     set_job(state="running", kind="render", name="Tagesvideos", frame=0, total=0)
     try:
@@ -259,6 +285,9 @@ class Handler(BaseHTTPRequestHandler):
                 if self.valid_pid(pid) and DAY_RE.match(day):
                     return self.send_json(list_images(pid, day))
                 return self.send_json([])
+            if u.path == "/api/daily_videos":
+                pid = q.get("pos", "")
+                return self.send_json(daily_videos(pid) if self.valid_pid(pid) else [])
             if u.path == "/api/videos":
                 return self.send_json(list_videos())
             if u.path == "/api/log":
@@ -325,6 +354,13 @@ class Handler(BaseHTTPRequestHandler):
             fps = core._clamp(body.get("fps", 24), 1, 60)
             width = core._clamp(body.get("width", 1920), 320, 4000)
             ok = start_job(run_render, pid, d1, d2, fps, width)
+            return self.send_json({"ok": ok, "error": None if ok else "laeuft bereits"})
+        if u.path == "/api/concat":
+            pid = body.get("pos", "")
+            d1, d2 = body.get("from") or None, body.get("to") or None
+            if not self.valid_pid(pid) or (d1 and not DAY_RE.match(d1)) or (d2 and not DAY_RE.match(d2)):
+                return self.send_json({"ok": False, "error": "ungueltige Angaben"}, 400)
+            ok = start_job(run_concat, pid, d1, d2)
             return self.send_json({"ok": ok, "error": None if ok else "laeuft bereits"})
         if u.path == "/api/daily":
             ok = start_job(run_daily)

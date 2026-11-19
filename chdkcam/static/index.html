@@ -92,13 +92,17 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
   <div class="card">
     <div class="row">
       <label>Position <select id="vpos"></select></label>
-      <label>von <input type="date" id="vfrom"></label>
-      <label>bis <input type="date" id="vto"></label>
+      <label>von Tag <select id="vfrom"></select></label>
+      <label>bis Tag <select id="vto"></select></label>
       <label>FPS <input type="number" id="vfps" value="24" min="1" max="60"></label>
       <label>Breite <select id="vw"><option>1280</option><option selected>1920</option><option>2560</option><option>3840</option></select></label>
       <button class="b p" id="vgo">Video erstellen</button>
       <button class="b" id="vday">Tagesvideos jetzt erstellen</button>
     </div>
+    <div id="vest" class="dim"></div>
+    <div class="row" style="margin-top:10px"><b>Tagesvideos zusammenfügen</b>
+      <label>von <select id="cfrom"></select></label><label>bis <select id="cto"></select></label>
+      <button class="b" id="vcat">Zusammenfügen</button><span id="cest" class="dim"></span></div>
     <div id="vjob" class="dim"></div>
     <div class="bar"><div id="vbar"></div></div>
   </div>
@@ -256,7 +260,29 @@ document.addEventListener('keydown',e=>{if($('lb').style.display!=='flex')return
   if(e.key==='Escape')$('lbclose').onclick();if(e.key==='ArrowLeft')lb(LBI-1);if(e.key==='ArrowRight')lb(LBI+1);});
 
 // ---------- Video
-async function loadVideos(){posOptions($('vpos'));const v=await api('/api/videos');
+const WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
+const dayLabel=d=>{const t=new Date(d+'T12:00');return `${WD[t.getDay()]} ${d.slice(8,10)}.${d.slice(5,7)}.${d.slice(0,4)}`;};
+let VDAYS=[],VDAILY=[];
+async function loadVidDays(){const pos=$('vpos').value;
+  VDAYS=(await api('/api/days?pos='+pos)).slice().reverse();      // aelteste zuerst
+  const o=VDAYS.map(d=>`<option value="${d.day}">${dayLabel(d.day)} (${d.count})</option>`).join('')||'<option value="">keine Bilder</option>';
+  $('vfrom').innerHTML=o;$('vto').innerHTML=o;
+  if(VDAYS.length){$('vfrom').value=VDAYS[0].day;$('vto').value=VDAYS[VDAYS.length-1].day;}
+  VDAILY=await api('/api/daily_videos?pos='+pos);
+  const c=VDAILY.map(d=>`<option value="${d.day}">${dayLabel(d.day)}</option>`).join('')||'<option value="">noch keine</option>';
+  $('cfrom').innerHTML=c;$('cto').innerHTML=c;
+  if(VDAILY.length){$('cfrom').value=VDAILY[0].day;$('cto').value=VDAILY[VDAILY.length-1].day;}
+  est();}
+function est(){const f=$('vfrom').value,t=$('vto').value,fps=+$('vfps').value||24;
+  const n=VDAYS.filter(d=>d.day>=f&&d.day<=t).reduce((a,d)=>a+d.count,0);
+  $('vest').textContent=n?`${n} Bilder → ca. ${(n/fps).toFixed(1)} s Video bei ${fps} fps`:'';
+  const cf=$('cfrom').value,ct=$('cto').value,cn=VDAILY.filter(d=>d.day>=cf&&d.day<=ct).length;
+  $('cest').textContent=cn?`${cn} Tagesvideo${cn>1?'s':''} – dauert nur Sekunden (ohne Neukodieren)`:'';}
+['vfrom','vto','vfps','cfrom','cto'].forEach(id=>$(id).addEventListener('change',est));
+$('vpos').onchange=loadVidDays;
+$('vcat').onclick=async()=>{const r=await api('/api/concat',{pos:$('vpos').value,from:$('cfrom').value,to:$('cto').value});
+  if(!r.ok)$('vjob').textContent='✗ '+r.error;else{pollJob.reloaded=false;pollJob();}};
+async function loadVideos(){const keep=$('vpos').value;posOptions($('vpos'));if(keep)$('vpos').value=keep;await loadVidDays();const v=await api('/api/videos');
   $('vlist').innerHTML=v.length?'<tr><th>Datei</th><th>Größe</th><th>erstellt</th><th></th></tr>'+v.map(x=>`<tr><td><a href="/video/${x.name}" target="_blank">${esc(x.name)}</a></td><td>${x.mb} MB</td><td>${fmtT(x.time)}</td>
     <td><a class="b" href="/video/${x.name}" download style="text-decoration:none">Laden</a> <button class="b" data-vdel="${esc(x.name)}">Löschen</button></td></tr>`).join(''):'<tr><td class="dim">noch keine Videos</td></tr>';
   document.querySelectorAll('[data-vdel]').forEach(b=>b.onclick=async()=>{if(!confirm('Video löschen?'))return;await api('/api/video/delete',{name:b.dataset.vdel});loadVideos();});

@@ -69,3 +69,26 @@ def render(files, out_path, fps=24, width=1920, on_progress=None):
             raise RuntimeError("ffmpeg: " + err.strip()[-300:])
         os.replace(part, out_path)
     return out_path
+
+
+def concat(videos, out_path):
+    """Fuegt fertige Videos ohne Neukodieren aneinander (gleiche Groesse/FPS noetig)."""
+    if not videos:
+        raise RuntimeError("keine Tagesvideos im Zeitraum")
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+        for v in videos:
+            f.write("file '%s'\n" % v.replace("'", "'\\''"))
+        lst = f.name
+    part = out_path + ".part.mp4"
+    try:
+        p = subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "concat",
+                            "-safe", "0", "-i", lst, "-c", "copy", "-movflags", "+faststart", part],
+                           capture_output=True, text=True, timeout=3600)
+        if p.returncode != 0:
+            raise RuntimeError("ffmpeg: " + p.stderr.strip()[-300:])
+        os.replace(part, out_path)
+    finally:
+        os.remove(lst)
+        if os.path.exists(part):
+            os.remove(part)
+    return out_path
