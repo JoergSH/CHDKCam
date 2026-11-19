@@ -238,11 +238,15 @@ function renderPositions(){
       readPositions();const r=await api('/api/preview',{position:CFG.positions[i]});busy(false);
       if(!r.ok){msg.textContent='✗ '+r.error;return;}
       const f=r.info||{};
-      msg.innerHTML=f.focus_mm!==undefined?`Kamera nahm: Fokus <b>${f.focus_mm} mm</b>${f.tv?' · '+esc(f.tv)+' s':''}${f.iso?' · ISO '+f.iso:''} <button class="b" data-takef>Fokus übernehmen</button> <button class="b" data-take>alles übernehmen</button>`:'';
+      const P=CFG.positions[i],fixF=P.focus_mm>0,fixT=!!P.tv,fixI=P.iso>0,allFix=fixF&&fixT&&fixI;
+      const part=(fix,lbl)=>fix?`${lbl} <span class="dim">(fest)</span>`:`<b>${lbl}</b>`;
+      msg.innerHTML=f.focus_mm!==undefined?`${allFix?'Gemessen':'Kamera nahm'}: Fokus ${part(fixF,f.focus_mm+' mm')}${f.tv?' · '+part(fixT,esc(f.tv)+' s'):''}${f.iso?' · '+part(fixI,'ISO '+f.iso):''}`
+        +(fixF?'':' <button class="b" data-takef>Fokus übernehmen</button>')+(allFix?'':' <button class="b" data-take>alles übernehmen</button>')
+        +(fixF&&Math.abs(f.focus_mm-P.focus_mm)>P.focus_mm*0.05?`<br><span class="dim">Eingestellt ${P.focus_mm} mm – das Objektiv fährt in Stufen und landet auf der nächstgelegenen (${f.focus_mm} mm).</span>`:''):'';
       const done=t=>msg.innerHTML=t+' eingetragen – <b>Speichern</b> nicht vergessen';
       const tf=msg.querySelector('[data-takef]'),tb=msg.querySelector('[data-take]');
       if(tf)tf.onclick=()=>{q('focus_mm').value=f.focus_mm;done('Fokus');};
-      if(tb)tb.onclick=()=>{q('focus_mm').value=f.focus_mm;if(f.tv)q('tv').value=f.tv;if(f.iso)q('iso').value=f.iso;done('Fokus, Belichtung und ISO');};
+      if(tb)tb.onclick=()=>{if(!fixF)q('focus_mm').value=f.focus_mm;if(f.tv&&!fixT)q('tv').value=f.tv;if(f.iso&&!fixI)q('iso').value=f.iso;done('Werte');};
       img.innerHTML=`<a href="${r.full}?t=${r.t}" target="_blank"><img src="${r.url}?t=${r.t}"></a>`;};
   });
 }
