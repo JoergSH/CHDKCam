@@ -126,6 +126,36 @@ def _clamp(v, lo, hi, typ=int, default=None):
 TV_RE = re.compile(r"^(\d+(\.\d+)?|1/\d+(\.\d+)?)$")
 
 
+def _gain(g):
+    """Farbkorrektur-Faktoren [R, G, B]; 1.0 = keine Korrektur."""
+    try:
+        g = [round(max(0.5, min(2.0, float(v))), 3) for v in g][:3]
+        if len(g) == 3:
+            return g
+    except (TypeError, ValueError):
+        pass
+    return [1.0, 1.0, 1.0]
+
+
+def has_gain(p):
+    return any(abs(v - 1.0) > 0.004 for v in p.get("gain") or [1, 1, 1])
+
+
+def apply_gain(path, gain):
+    """Farbkorrektur direkt ins JPEG rechnen (hohe Qualitaet)."""
+    tmp = path + ".cc.jpg"
+    r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", path, "-vf",
+                        "colorchannelmixer=rr=%.3f:gg=%.3f:bb=%.3f" % tuple(gain),
+                        "-q:v", "2", tmp], capture_output=True, timeout=60)
+    if r.returncode == 0 and os.path.isfile(tmp) and os.path.getsize(tmp) > 1000:
+        os.replace(tmp, path)
+        return True
+    if os.path.exists(tmp):
+        os.remove(tmp)
+    log_error("Farbkorrektur fehlgeschlagen: %s" % r.stderr.decode(errors="replace")[-200:])
+    return False
+
+
 def validate_position(p, idx):
     pid = str(p.get("id") or "pos%d" % (idx + 1)).strip().lower()
     pid = re.sub(r"[^a-z0-9_-]", "_", pid)[:24] or "pos%d" % (idx + 1)
@@ -150,6 +180,7 @@ def validate_position(p, idx):
         "size": p.get("size") if p.get("size") in SIZES else "camera",
         "quality": p.get("quality") if p.get("quality") in QUALITIES else "camera",
         "dng": bool(p.get("dng", False)),
+        "gain": _gain(p.get("gain")),
         "interval_min": _clamp(p.get("interval_min", 0), 0, 1440),
         "enabled": bool(p.get("enabled", True)),
     }
@@ -500,6 +531,8 @@ def capture(c=None, only=None, lock_timeout=120, ids=None):
                     final = os.path.join(IMAGES, p["id"], day, stamp + ".jpg")
                     if path != final:
                         os.replace(path, final)
+                    if has_gain(p):
+                        apply_gain(final, p["gain"])
                     result["shots"][p["id"]] = final
             todo = [p for p in todo if p["id"] not in result["shots"]]
             if not todo:
@@ -552,13 +585,16 @@ def preview(p, c=None):
     final = os.path.join(PREVIEW, "preview.jpg")
     if path != final:
         os.replace(path, final)
-    make_thumb(final, os.path.join(PREVIEW, "preview_small.jpg"), width=1280)
     info = shot_info(out).get(p["id"], {})
     ex = exif_exposure(final)          # Belichtung steht zuverlaessig nur im EXIF
     if ex.get("tv_s"):
         info["tv"] = fmt_tv(ex["tv_s"])
     if ex.get("iso"):
         info["iso"] = _nearest_log(ex["iso"], ISO_STEPS)
+    if has_gain(p):
+        apply_gain(final, p["gain"])
+        info["gain"] = p["gain"]
+    make_thumb(final, os.path.join(PREVIEW, "preview_small.jpg"), width=1280)
     return final, info
 
 
