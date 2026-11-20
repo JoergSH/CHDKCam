@@ -7,6 +7,9 @@
 <style>
 :root{--bg:#14171a;--card:#1e2227;--line:#2e343b;--text:#e6e8ea;--dim:#9aa3ab;--acc:#5fbf6a;--warn:#e0a03a;--err:#e05a4f}
 *{box-sizing:border-box}
+a{color:#7cc4ff}a:visited{color:#b49cff}a:hover{color:#a9dcff}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;border:1px solid var(--line);white-space:nowrap}
+.tag.auto{color:var(--acc);border-color:var(--acc)}.tag.concat{color:#7cc4ff;border-color:#7cc4ff}.tag.manual{color:var(--warn);border-color:var(--warn)}
 body{margin:0;font:15px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--text)}
 header{display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 header h1{font-size:18px;margin:0}
@@ -468,7 +471,9 @@ $('vpos').onchange=loadVidDays;
 $('vcat').onclick=async()=>{const r=await api('/api/concat',{pos:$('vpos').value,from:$('cfrom').value,to:$('cto').value});
   if(!r.ok)$('vjob').textContent='✗ '+r.error;else{pollJob.reloaded=false;pollJob();}};
 async function loadVideos(){const keep=$('vpos').value;posOptions($('vpos'));if(keep)$('vpos').value=keep;await loadVidDays();const v=await api('/api/videos');
-  $('vlist').innerHTML=v.length?'<tr><th>Datei</th><th>Größe</th><th>erstellt</th><th></th></tr>'+v.map(x=>`<tr><td><a href="/video/${x.name}" target="_blank">${esc(x.name)}</a></td><td>${x.mb} MB</td><td>${fmtT(x.time)}</td>
+  const KIND={auto:['auto','automatisch (Tagesvideo)'],concat:['concat','zusammengefügt'],manual:['manual','manuell erstellt']};
+  $('vlist').innerHTML=v.length?'<tr><th>Datei</th><th>Art</th><th>Größe</th><th>erstellt</th><th></th></tr>'+v.map(x=>`<tr><td><a href="/video/${x.name}" target="_blank">${esc(x.name)}</a></td>
+    <td><span class="tag ${(KIND[x.kind]||KIND.manual)[0]}">${(KIND[x.kind]||KIND.manual)[1]}</span></td><td>${x.mb} MB</td><td>${fmtT(x.time)}</td>
     <td><a class="b" href="/video/${x.name}" download style="text-decoration:none">Laden</a> <button class="b" data-vdel="${esc(x.name)}">Löschen</button></td></tr>`).join(''):'<tr><td class="dim">noch keine Videos</td></tr>';
   document.querySelectorAll('[data-vdel]').forEach(b=>b.onclick=async()=>{if(!confirm('Video löschen?'))return;await api('/api/video/delete',{name:b.dataset.vdel});loadVideos();});
   pollJob();}

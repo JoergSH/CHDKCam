@@ -118,7 +118,8 @@ def list_videos():
     for f in sorted(os.listdir(core.VIDEOS), reverse=True):
         if VID_RE.match(f) and ".part." not in f:
             p = os.path.join(core.VIDEOS, f)
-            out.append({"name": f, "mb": round(os.path.getsize(p) / 1e6, 1),
+            kind = "auto" if DAILY_RE.match(f) else "concat" if "_tage_" in f else "manual"
+            out.append({"name": f, "kind": kind, "mb": round(os.path.getsize(p) / 1e6, 1),
                         "time": datetime.datetime.fromtimestamp(
                             os.path.getmtime(p)).isoformat(timespec="minutes")})
     return out
