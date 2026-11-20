@@ -43,6 +43,23 @@ def job_snapshot():
 
 
 # ---------------------------------------------------------------- Daten
+def all_positions():
+    """Konfigurierte Positionen plus alle frueheren, von denen noch Bilder existieren."""
+    c = core.load_cfg()
+    out = [{"id": p["id"], "name": p["name"], "current": True} for p in c["positions"]]
+    known = {p["id"] for p in c["positions"]}
+    old = set()
+    for base in core.image_dirs(c):
+        if os.path.isdir(base):
+            for d in os.listdir(base):
+                full = os.path.join(base, d)
+                if d not in known and core.ID_RE.match(d) and os.path.isdir(full) and \
+                        any(DAY_RE.match(x) for x in os.listdir(full)):
+                    old.add(d)
+    out += [{"id": d, "name": d, "current": False} for d in sorted(old)]
+    return out
+
+
 def list_images(pid, day):
     names = set()
     for base in core.image_dirs():
@@ -274,7 +291,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def valid_pid(self, pid):
         return pid in [p["id"] for p in core.load_cfg()["positions"]] or \
-            (core.ID_RE.match(pid or "") and os.path.isdir(os.path.join(core.IMAGES, pid)))
+            (core.ID_RE.match(pid or "") and
+             any(os.path.isdir(os.path.join(b, pid)) for b in core.image_dirs()))
 
     # ---- GET
     def do_GET(self):
@@ -294,6 +312,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(core.camera_status())
                 except Exception as e:  # noqa: BLE001
                     return self.send_json({"connected": False, "error": str(e)})
+            if u.path == "/api/allpos":
+                return self.send_json(all_positions())
             if u.path == "/api/days":
                 pid = q.get("pos", "")
                 return self.send_json(list_days(pid) if self.valid_pid(pid) else [])

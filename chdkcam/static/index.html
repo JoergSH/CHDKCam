@@ -396,7 +396,10 @@ async function loadPhotos(){const ph=await api('/api/photos');
 // ---------- Galerie
 let GAL=[],GPOS='',GDAY='';
 function posOptions(sel){sel.innerHTML=(CFG?.positions||[]).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');}
-async function loadGalPos(){posOptions($('gpos'));await loadDays();}
+async function allPosOptions(sel){const keep=sel.value,l=await api('/api/allpos');
+  sel.innerHTML=l.map(p=>`<option value="${p.id}">${esc(p.name)}${p.current?'':' (frühere Position)'}</option>`).join('');
+  if(keep&&l.some(p=>p.id===keep))sel.value=keep;}
+async function loadGalPos(){await allPosOptions($('gpos'));await loadDays();}
 let RCRECT=null,GALV=0,RCLAST=0;
 function loadRecolor(days){const o=days.slice().reverse().map(x=>`<option value="${x.day}">${dayLabel(x.day)} (${x.count})</option>`).join('');
   $('rcfrom').innerHTML=o;$('rcto').innerHTML=o;if(days.length){$('rcfrom').value=days[days.length-1].day;$('rcto').value=days[0].day;}
@@ -470,7 +473,7 @@ function est(){const f=$('vfrom').value,t=$('vto').value,fps=+$('vfps').value||2
 $('vpos').onchange=loadVidDays;
 $('vcat').onclick=async()=>{const r=await api('/api/concat',{pos:$('vpos').value,from:$('cfrom').value,to:$('cto').value});
   if(!r.ok)$('vjob').textContent='✗ '+r.error;else{pollJob.reloaded=false;pollJob();}};
-async function loadVideos(){const keep=$('vpos').value;posOptions($('vpos'));if(keep)$('vpos').value=keep;await loadVidDays();const v=await api('/api/videos');
+async function loadVideos(){await allPosOptions($('vpos'));await loadVidDays();const v=await api('/api/videos');
   const KIND={auto:['auto','automatisch (Tagesvideo)'],concat:['concat','zusammengefügt'],manual:['manual','manuell erstellt']};
   $('vlist').innerHTML=v.length?'<tr><th>Datei</th><th>Art</th><th>Größe</th><th>erstellt</th><th></th></tr>'+v.map(x=>`<tr><td><a href="/video/${x.name}" target="_blank">${esc(x.name)}</a></td>
     <td><span class="tag ${(KIND[x.kind]||KIND.manual)[0]}">${(KIND[x.kind]||KIND.manual)[1]}</span></td><td>${x.mb} MB</td><td>${fmtT(x.time)}</td>
