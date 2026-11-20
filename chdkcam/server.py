@@ -128,17 +128,39 @@ def tail(path, n=40):
         return []
 
 
+def video_dirs():
+    """Lokaler Videoordner, dazu der Videoordner im Archiv (falls erreichbar)."""
+    dirs = [core.VIDEOS]
+    a = core.archive_root()
+    if a and os.path.isdir(os.path.join(a, "videos")):
+        dirs.append(os.path.join(a, "videos"))
+    return dirs
+
+
+def find_video(name):
+    for d in video_dirs():
+        p = os.path.join(d, name)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
 def list_videos():
-    if not os.path.isdir(core.VIDEOS):
-        return []
-    out = []
-    for f in sorted(os.listdir(core.VIDEOS), reverse=True):
-        if VID_RE.match(f) and ".part." not in f:
-            p = os.path.join(core.VIDEOS, f)
+    seen, out = set(), []
+    for k, d in enumerate(video_dirs()):
+        if not os.path.isdir(d):
+            continue
+        for f in os.listdir(d):
+            if not VID_RE.match(f) or ".part." in f or f in seen:
+                continue
+            seen.add(f)
+            p = os.path.join(d, f)
             kind = "auto" if DAILY_RE.match(f) else "concat" if "_tage_" in f else "manual"
             out.append({"name": f, "kind": kind, "mb": round(os.path.getsize(p) / 1e6, 1),
+                        "archive": k > 0,
                         "time": datetime.datetime.fromtimestamp(
                             os.path.getmtime(p)).isoformat(timespec="minutes")})
+    out.sort(key=lambda v: v["time"], reverse=True)
     return out
 
 
@@ -175,17 +197,18 @@ DAILY_RE = re.compile(r"^tag_([a-z0-9_-]+)_(\d{4}-\d{2}-\d{2})\.mp4$")
 
 
 def daily_videos(pid):
-    out = []
-    if os.path.isdir(core.VIDEOS):
-        for f in sorted(os.listdir(core.VIDEOS)):
-            m = DAILY_RE.match(f)
-            if m and m.group(1) == pid:
-                out.append({"day": m.group(2), "name": f})
-    return out
+    found = {}
+    for d in video_dirs():
+        if os.path.isdir(d):
+            for f in os.listdir(d):
+                m = DAILY_RE.match(f)
+                if m and m.group(1) == pid and f not in found:
+                    found[f] = {"day": m.group(2), "name": f, "path": os.path.join(d, f)}
+    return [found[k] for k in sorted(found)]
 
 
 def run_concat(pid, d1, d2):
-    vids = [os.path.join(core.VIDEOS, v["name"]) for v in daily_videos(pid)
+    vids = [v["path"] for v in daily_videos(pid)
             if (not d1 or v["day"] >= d1) and (not d2 or v["day"] <= d2)]
     name = "%s_tage_%s_bis_%s.mp4" % (pid, d1 or "anfang", d2 or "heute")
     set_job(state="running", kind="render", name=name, frame=0, total=len(vids), phase="concat")
@@ -324,7 +347,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json([])
             if u.path == "/api/daily_videos":
                 pid = q.get("pos", "")
-                return self.send_json(daily_videos(pid) if self.valid_pid(pid) else [])
+                return self.send_json([{"day": v["day"], "name": v["name"]} for v in daily_videos(pid)]
+                                      if self.valid_pid(pid) else [])
             if u.path == "/api/photos":
                 return self.send_json(core.list_photos())
             if len(parts) == 2 and parts[0] == "photo" and PHOTO_RE.match(parts[1]):
@@ -359,7 +383,7 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) == 2 and parts[0] == "preview" and PREV_RE.match(parts[1]):
                 return self.send_file(os.path.join(core.PREVIEW, parts[1]), "image/jpeg")
             if len(parts) == 2 and parts[0] == "video" and VID_RE.match(parts[1]):
-                return self.send_file(os.path.join(core.VIDEOS, parts[1]), "video/mp4")
+                return self.send_file(find_video(parts[1]) or "", "video/mp4")
         except (BrokenPipeError, ConnectionResetError):
             return
         self.send_error(404)
@@ -462,10 +486,11 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/video/delete":
             name = body.get("name", "")
             if VID_RE.match(name):
-                try:
-                    os.remove(os.path.join(core.VIDEOS, name))
-                except OSError:
-                    pass
+                for d in video_dirs():
+                    try:
+                        os.remove(os.path.join(d, name))
+                    except OSError:
+                        pass
             return self.send_json({"ok": True})
         self.send_error(404)
 

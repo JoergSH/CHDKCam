@@ -476,7 +476,7 @@ $('vcat').onclick=async()=>{const r=await api('/api/concat',{pos:$('vpos').value
 async function loadVideos(){await allPosOptions($('vpos'));await loadVidDays();const v=await api('/api/videos');
   const KIND={auto:['auto','automatisch (Tagesvideo)'],concat:['concat','zusammengefügt'],manual:['manual','manuell erstellt']};
   $('vlist').innerHTML=v.length?'<tr><th>Datei</th><th>Art</th><th>Größe</th><th>erstellt</th><th></th></tr>'+v.map(x=>`<tr><td><a href="/video/${x.name}" target="_blank">${esc(x.name)}</a></td>
-    <td><span class="tag ${(KIND[x.kind]||KIND.manual)[0]}">${(KIND[x.kind]||KIND.manual)[1]}</span></td><td>${x.mb} MB</td><td>${fmtT(x.time)}</td>
+    <td><span class="tag ${(KIND[x.kind]||KIND.manual)[0]}">${(KIND[x.kind]||KIND.manual)[1]}</span>${x.archive?' <span class="tag">auf SD-Karte</span>':''}</td><td>${x.mb} MB</td><td>${fmtT(x.time)}</td>
     <td><a class="b" href="/video/${x.name}" download style="text-decoration:none">Laden</a> <button class="b" data-vdel="${esc(x.name)}">Löschen</button></td></tr>`).join(''):'<tr><td class="dim">noch keine Videos</td></tr>';
   document.querySelectorAll('[data-vdel]').forEach(b=>b.onclick=async()=>{if(!confirm('Video löschen?'))return;await api('/api/video/delete',{name:b.dataset.vdel});loadVideos();});
   pollJob();}
