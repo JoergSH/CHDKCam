@@ -31,6 +31,7 @@ button.b:disabled{opacity:.5;cursor:wait}
 .thumbs{display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 .thumbs a{position:relative;display:block}
 .thumbs img{width:100%;border-radius:4px;display:block;aspect-ratio:4/3;object-fit:cover;background:#000}
+.thumbs a.sel img{outline:3px solid var(--err);opacity:.6}
 .thumbs span{position:absolute;left:4px;bottom:4px;background:#000a;font-size:12px;padding:1px 5px;border-radius:3px}
 .pos{border-left:3px solid var(--acc)}
 .pos.off{border-left-color:var(--line);opacity:.75}
@@ -106,6 +107,9 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
     <label>Position <select id="gpos"></select></label>
     <label>Tag <select id="gday"></select></label>
     <span id="gcount" class="dim"></span>
+    <button class="b" id="gsel">Auswählen</button>
+    <span id="gselbar" style="display:none"><span id="gseln" class="dim">0 gewählt</span>
+      <button class="b" id="gselall">alle</button><button class="b" id="gseldel" style="color:var(--err)">🗑 Löschen</button><button class="b" id="gselx">Abbrechen</button></span>
   </div>
   <div class="thumbs" id="gthumbs"></div>
   <div class="card" style="margin-top:14px"><h3>Farben nachträglich korrigieren</h3>
@@ -145,8 +149,9 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
   <div class="card">
     <div class="row"><label>Name der Kamera <input id="s_title" maxlength="40" style="width:240px"></label></div>
     <div class="row"><label>Intervall (Minuten) <input type="number" id="s_int" min="1" max="1440"></label></div>
-    <div class="row"><label>Fotografieren von <input type="number" id="s_ls" min="0" max="23"> Uhr</label>
-      <label>bis <input type="number" id="s_le" min="1" max="24"> Uhr</label></div>
+    <div class="row"><label>Fotografieren von <input id="s_ls" placeholder="04:00" pattern="\d{1,2}:\d{2}" style="width:80px"> Uhr</label>
+      <label>bis <input id="s_le" placeholder="24:00" pattern="\d{1,2}:\d{2}" style="width:80px"> Uhr</label>
+      <span class="dim">Format HH:MM, 24:00 = Mitternacht</span></div>
     <div class="row"><label>Wartezeit nach Zoom (ms) <input type="number" id="s_settle" min="0" max="20000"></label>
       <label>Pause nach Auslösen (ms) <input type="number" id="s_pause" min="0" max="30000"></label></div>
     <div class="row"><label>Nach der Runde
@@ -175,7 +180,7 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--dim);margin:0;max-height:300
 </section>
 </main>
 
-<div id="lb"><img id="lbimg"><div class="row"><button class="b" id="lbprev">◀</button><span id="lbtxt"></span><button class="b" id="lbnext">▶</button><a class="b" id="lbfull" target="_blank" style="text-decoration:none">Original</a><button class="b" id="lbclose">✕</button></div></div>
+<div id="lb"><img id="lbimg"><div class="row"><button class="b" id="lbprev">◀</button><span id="lbtxt"></span><button class="b" id="lbnext">▶</button><a class="b" id="lbfull" target="_blank" style="text-decoration:none">Original</a><button class="b" id="lbdel" style="color:var(--err)">🗑 Löschen</button><button class="b" id="lbclose">✕</button></div></div>
 
 <script>
 const $=id=>document.getElementById(id);
@@ -409,18 +414,35 @@ async function pollRecolor(){const j=(await api('/api/status')).job;if(j.kind!==
   else if(j.state==='done'){$('rcjob').innerHTML='<span class="ok">✓ fertig:</span> '+txt+' – vorhandene Tagesvideos ggf. löschen und neu erstellen';$('rcbar').style.width='100%';GALV=Date.now();loadThumbs();}
   else $('rcjob').innerHTML='<span class="err">✗ '+esc(j.error)+'</span>';}
 async function loadDays(){GPOS=$('gpos').value;const d=await api('/api/days?pos='+GPOS);loadRecolor(d);
-  $('gday').innerHTML=d.map(x=>`<option value="${x.day}">${x.day} (${x.count})</option>`).join('');loadThumbs();}
+  const keep=$('gday').value;
+  $('gday').innerHTML=d.map(x=>`<option value="${x.day}">${x.day} (${x.count})</option>`).join('');
+  if(keep&&d.some(x=>x.day===keep))$('gday').value=keep;await loadThumbs();}
 async function loadThumbs(){GDAY=$('gday').value;if(!GDAY){$('gthumbs').innerHTML='<div class="dim">keine Bilder</div>';$('gcount').textContent='';return;}
   GAL=await api(`/api/images?pos=${GPOS}&day=${GDAY}`);$('gcount').textContent=GAL.length+' Bilder';
   $('gthumbs').innerHTML=GAL.map((f,i)=>`<a href="#" data-i="${i}"><img loading="lazy" src="/thumb/${GPOS}/${GDAY}/${f}?v=${GALV}"><span>${f.slice(9,11)}:${f.slice(11,13)}</span></a>`).join('');
-  document.querySelectorAll('#gthumbs a').forEach(a=>a.onclick=e=>{e.preventDefault();lb(+a.dataset.i);});}
+  document.querySelectorAll('#gthumbs a').forEach(a=>a.onclick=e=>{e.preventDefault();
+    if(GSEL){const n=GAL[+a.dataset.i];GSEL.has(n)?GSEL.delete(n):GSEL.add(n);a.classList.toggle('sel',GSEL.has(n));$('gseln').textContent=GSEL.size+' gewählt';}
+    else lb(+a.dataset.i);});}
+let GSEL=null;
+function selMode(on){GSEL=on?new Set():null;$('gselbar').style.display=on?'inline':'none';$('gsel').style.display=on?'none':'inline-block';
+  document.querySelectorAll('#gthumbs a').forEach(a=>a.classList.remove('sel'));if(on)$('gseln').textContent='0 gewählt';}
+$('gsel').onclick=()=>selMode(true);$('gselx').onclick=()=>selMode(false);
+$('gselall').onclick=()=>{GSEL=new Set(GAL);document.querySelectorAll('#gthumbs a').forEach(a=>a.classList.add('sel'));$('gseln').textContent=GSEL.size+' gewählt';};
+$('gseldel').onclick=async()=>{if(!GSEL||!GSEL.size)return;if(!confirm(`${GSEL.size} Bild(er) endgültig löschen?`))return;
+  const r=await api('/api/image/delete',{pos:GPOS,day:GDAY,names:[...GSEL]});selMode(false);
+  GALV=Date.now();await loadDays();$('gcount').textContent+=r.ok?` · ${r.deleted} gelöscht`:' · ✗ '+r.error;};
+$('lbdel').onclick=async()=>{const f=GAL[LBI];if(!confirm('Dieses Bild löschen?'))return;
+  const r=await api('/api/image/delete',{pos:GPOS,day:GDAY,names:[f]});if(!r.ok){alert(r.error);return;}
+  GAL.splice(LBI,1);GALV=Date.now();
+  if(!GAL.length){$('lb').style.display='none';await loadDays();return;}
+  const keep=LBI;await loadThumbs();lb(Math.min(keep,GAL.length-1));};
 $('gpos').onchange=loadDays;$('gday').onchange=loadThumbs;
 let LBI=0;
 function lb(i){LBI=(i+GAL.length)%GAL.length;const f=GAL[LBI],u=`/img/${GPOS}/${GDAY}/${f}?v=${GALV}`;
   $('lbimg').src=u;$('lbfull').href=u;$('lbtxt').textContent=`${GDAY} ${f.slice(9,11)}:${f.slice(11,13)} (${LBI+1}/${GAL.length})`;$('lb').style.display='flex';}
 $('lbclose').onclick=()=>$('lb').style.display='none';$('lbprev').onclick=()=>lb(LBI-1);$('lbnext').onclick=()=>lb(LBI+1);
 document.addEventListener('keydown',e=>{if($('lb').style.display!=='flex')return;
-  if(e.key==='Escape')$('lbclose').onclick();if(e.key==='ArrowLeft')lb(LBI-1);if(e.key==='ArrowRight')lb(LBI+1);});
+  if(e.key==='Escape')$('lbclose').onclick();if(e.key==='Delete')$('lbdel').onclick();if(e.key==='ArrowLeft')lb(LBI-1);if(e.key==='ArrowRight')lb(LBI+1);});
 
 // ---------- Video
 const WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
@@ -470,7 +492,7 @@ async function loadSet(){await loadCfg();const c=CFG;$('s_title').value=c.title;
     CFG=await api('/api/config',{wb_presets:CFG.wb_presets.filter(x=>x.id!==b.dataset.wbpdel)});loadSet();});
   const a=await api('/api/archive');$('s_arst').innerHTML=a.ok?`<span class="ok">✓ ${a.msg}, frei ${a.free_gb} von ${a.total_gb} GB</span>`:(c.archive_dir?`<span class="err">✗ ${esc(a.msg)}</span>`:'');
   const l=await api('/api/log');$('lerr').textContent=l.error.join('')||'–';$('lcap').textContent=l.capture.slice().reverse().join('')||'–';}
-$('saveset').onclick=async()=>{CFG=await api('/api/config',{title:$('s_title').value,interval_min:+$('s_int').value,light_start:+$('s_ls').value,light_end:+$('s_le').value,
+$('saveset').onclick=async()=>{CFG=await api('/api/config',{title:$('s_title').value,interval_min:+$('s_int').value,light_start:$('s_ls').value.trim(),light_end:$('s_le').value.trim(),
   settle_ms:+$('s_settle').value,shot_pause_ms:+$('s_pause').value,after:$('s_after').value,retries:+$('s_retry').value,overlay:$('s_ov').checked,archive:$('s_ar').checked,archive_dir:$('s_ard').value,archive_delete:$('s_ardel').checked,day_video:$('s_dv').checked,day_fps:+$('s_dfps').value,day_width:+$('s_dw').value,chdkptp:$('s_ptp').value});
   showTitle();$('setmsg').textContent='✓ gespeichert';setTimeout(()=>$('setmsg').textContent='',3000);loadStatus();};
 

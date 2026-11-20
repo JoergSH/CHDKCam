@@ -49,8 +49,8 @@ ID_RE = re.compile(r"^[a-z0-9_-]{1,24}$")
 DEFAULT_CFG = {
     "title": "CHDKCam",    # Name in der Weboberflaeche / im Browser-Tab
     "interval_min": 10,
-    "light_start": 4,      # Stunde, ab der fotografiert wird
-    "light_end": 24,       # Stunde, bis zu der fotografiert wird (24 = Mitternacht)
+    "light_start": "04:00",  # ab wann fotografiert wird (HH:MM)
+    "light_end": "24:00",    # bis wann fotografiert wird (24:00 = Mitternacht)
     "chdkptp": "~/chdkptp/chdkptp-run.sh",
     "settle_ms": 2500,     # Wartezeit nach dem Zoomen
     "shot_pause_ms": 4000,  # Pause nach dem Ausloesen (SX20 stuerzt sonst beim Zoomen ab)
@@ -222,8 +222,9 @@ def validate_cfg(new):
     c = dict(DEFAULT_CFG)
     c["title"] = (str(new.get("title") or "").strip() or "CHDKCam")[:40]
     c["interval_min"] = _clamp(new.get("interval_min", c["interval_min"]), 1, 1440)
-    c["light_start"] = _clamp(new.get("light_start", c["light_start"]), 0, 23)
-    c["light_end"] = _clamp(new.get("light_end", c["light_end"]), 1, 24)
+    c["light_start"] = fmt_hm(parse_hm(new.get("light_start", c["light_start"]), 240) % 1440)
+    e = parse_hm(new.get("light_end", c["light_end"]), 1440)
+    c["light_end"] = fmt_hm(1440 if e in (0, 1440) else e % 1440)
     c["chdkptp"] = str(new.get("chdkptp") or c["chdkptp"])
     c["settle_ms"] = _clamp(new.get("settle_ms", c["settle_ms"]), 0, 20000)
     c["shot_pause_ms"] = _clamp(new.get("shot_pause_ms", c["shot_pause_ms"]), 0, 30000)
@@ -278,13 +279,35 @@ def save_cfg(c):
 
 
 # ------------------------------------------------------------ Zeitplan
+def parse_hm(v, default=0):
+    """'HH:MM' oder Stunde (alte Konfiguration) -> Minuten des Tages."""
+    if isinstance(v, (int, float)):
+        return int(v) * 60
+    m = re.match(r"^\s*(\d{1,2})(?::(\d{2}))?\s*$", str(v or ""))
+    if not m:
+        return default
+    h, mi = int(m.group(1)), int(m.group(2) or 0)
+    if h > 24 or mi > 59 or (h == 24 and mi):
+        return default
+    return h * 60 + mi
+
+
+def fmt_hm(minutes):
+    return "%02d:%02d" % divmod(int(minutes), 60)
+
+
+def light_window(c):
+    """(Start, Ende) in Minuten des Tages; Ende 1440 = Mitternacht."""
+    return parse_hm(c["light_start"], 240), parse_hm(c["light_end"], 1440)
+
+
 def light_on(c, now=None):
     now = now or datetime.datetime.now()
-    s, e = c["light_start"], c["light_end"]
-    h = now.hour
+    s, e = light_window(c)
+    t = now.hour * 60 + now.minute
     if s < e:
-        return s <= h < e
-    return h >= s or h < e      # ueber Mitternacht
+        return s <= t < e
+    return t >= s or t < e      # ueber Mitternacht
 
 
 def pos_interval(c, p):
@@ -296,7 +319,7 @@ def due_positions(c, now=None):
     now = now or datetime.datetime.now()
     if not light_on(c, now):
         return []
-    minutes = (now.hour * 60 + now.minute - c["light_start"] * 60) % 1440
+    minutes = (now.hour * 60 + now.minute - light_window(c)[0]) % 1440
     return [p["id"] for p in c["positions"]
             if p["enabled"] and minutes % pos_interval(c, p) == 0]
 
@@ -930,6 +953,23 @@ def archive_day(pid, day, video=None, c=None):
 
 
 # ------------------------------------------------------------ Aufraeumen
+def delete_image(pid, day, name, c=None):
+    """Ein Bild (lokal und im Archiv) samt Miniatur loeschen."""
+    n = 0
+    for base in image_dirs(c):
+        f = os.path.join(base, pid, day, name)
+        if os.path.isfile(f):
+            os.remove(f)
+            n += 1
+        dng = f[:-4] + ".dng"
+        if os.path.isfile(dng):
+            os.remove(dng)
+    t = os.path.join(THUMBS, pid, day, name)
+    if os.path.isfile(t):
+        os.remove(t)
+    return n
+
+
 def clear_logs():
     for f in (ERR_LOG, CAP_LOG):
         try:

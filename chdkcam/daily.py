@@ -23,8 +23,8 @@ def finished_days(c, pid, now):
     if not os.path.isdir(base):
         return []
     today = now.strftime("%Y-%m-%d")
-    today_done = c["light_end"] < 24 and c["light_start"] < c["light_end"] \
-        and now.hour >= c["light_end"]
+    s, e = core.light_window(c)
+    today_done = e < 1440 and s < e and now.hour * 60 + now.minute >= e
     days = []
     for d in sorted(os.listdir(base)):
         if not render.DAY_RE.match(d):

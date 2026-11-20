@@ -432,6 +432,12 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 return self.send_json({"ok": False, "error": str(e)})
             return self.send_json({"ok": True})
+        if u.path == "/api/image/delete":
+            pid, day, names = body.get("pos", ""), body.get("day", ""), body.get("names") or []
+            if not self.valid_pid(pid) or not DAY_RE.match(day) or not isinstance(names, list):
+                return self.send_json({"ok": False, "error": "ungueltige Angaben"}, 400)
+            n = sum(core.delete_image(pid, day, x) for x in names if IMG_RE.match(str(x)))
+            return self.send_json({"ok": True, "deleted": n})
         if u.path == "/api/video/delete":
             name = body.get("name", "")
             if VID_RE.match(name):
